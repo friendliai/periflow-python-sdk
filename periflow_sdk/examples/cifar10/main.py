@@ -163,6 +163,8 @@ init(args.total_steps, args.save_interval, args.save_dir)
 for step in range(args.consumed_steps + 1, args.total_steps + 1):
     try:
         inputs, targets = next(trainloader_iter)
+        inputs = inputs.to(device)
+        targets = targets.to(device)
     except StopIteration:
         # This indicates an end of epoch.
         test(epoch)
@@ -172,6 +174,8 @@ for step in range(args.consumed_steps + 1, args.total_steps + 1):
 
         trainloader_iter = iter(trainloader)
         inputs, targets = next(trainloader_iter)
+        inputs = inputs.to(device)
+        targets = targets.to(device)
 
     # Actual training function
     train_batch(inputs=inputs,
