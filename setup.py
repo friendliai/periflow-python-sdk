@@ -32,7 +32,7 @@ COMMON_DEPS = [
 ]
 
 TEST_DEPS = [
-    "coverage==5.5"
+    "coverage==5.5",
     "pytest==6.2.4",
     "pytest-asyncio==0.15.1",
     "pytest-cov==2.11.1",
@@ -41,13 +41,13 @@ TEST_DEPS = [
 ]
 
 setup(
-    name='periflow',
+    name='periflow_sdk',
     version=read_version(),
     author = 'FriendliAI',
     license="Apache License 2.0",
     url = "https://github.com/friendliai/periflow-python-sdk",
     description = "PeriFlow SDK",
-    packages=find_packages(include=['periflow', 'periflow.*']),
+    packages=find_packages(include=['periflow_sdk', 'periflow_sdk.*']),
     classifiers=[
         "Programming Language :: Python :: 3",
         "Natural Language :: English",

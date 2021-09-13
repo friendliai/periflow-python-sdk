@@ -1,7 +1,7 @@
 import os
 import atexit
 from enum import Enum
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 import functools
 from periflow_sdk.checkpoint.checkpoint_func import sync_checkpoint_func
 from periflow_sdk.checkpoint.state_provider import default_state_provider
@@ -17,7 +17,7 @@ from .comm.errors import IpcTimeoutException, IpcConnectionFailureException
 periflow_logger = logging.getLogger("periflow")
 
 def get_checkpoint_name(iter: int):
-    return 'iter_{:07d}'.format(int)
+    return 'iter_{:07d}'.format(iter)
 
 
 class SaveType(str, Enum):
@@ -31,25 +31,26 @@ class TrainStepOutput:
     Users are encouraged to add statistics to this class, so that Periflow can automatically log necessary data.
     """
     iteration: int
+    step_time: float
 
 
 class TrainingManager:
     """ The training wrapper class for general PyTorch training code.
     """
     def __init__(self):
-        host_slot_list = list(map(int, os.environ["HOST_SLOT_LIST"].split(",")))
-        node_rank = int(os.environ["NODE_RANK"])
-        num_devices = host_slot_list[node_rank]
-        rank = int(os.environ['RANK'])
-        local_rank = rank % num_devices
 
-        self._is_local = os.environ["PERYFLOW_ENABLED"] is None or os.environ["PERYFLOW_ENABLED"] != 1
+        self._is_local = "PERYFLOW_ENABLED" not in os.environ or os.environ["PERYFLOW_ENABLED"] != 1
 
         if self._is_local:
             self._stat_ipc_channel = None
             self._ack_ipc_channel = None
             self._emergency_save_ipc_channel = None
         else:
+            host_slot_list = list(map(int, os.environ["HOST_SLOT_LIST"].split(",")))
+            node_rank = int(os.environ["NODE_RANK"])
+            num_devices = host_slot_list[node_rank]
+            rank = int(os.environ['RANK'])
+            local_rank = rank % num_devices
             self._stat_ipc_channel = get_default_ipc_channel(purpose=IpcCommPurpose.STAT,
                                                              local_rank=local_rank)
             self._ack_ipc_channel = get_default_ipc_channel(purpose=IpcCommPurpose.ACK,
@@ -62,7 +63,6 @@ class TrainingManager:
              total_train_steps: int,
              save_interval: int = 0,
              save_dir: str = None,
-             log_dir: str = None,
              checkpoint_save_fn: Callable[[Dict, str], None] = sync_checkpoint_func,
              state_dict_provider_fn: Callable[..., None] = default_state_provider):
         """ Initialize training manager.
@@ -76,11 +76,14 @@ class TrainingManager:
         self._total_train_steps = total_train_steps
         self._save_interval = save_interval
         self._save_dir = save_dir
-        self._log_dir = log_dir
+        if not os.path.exists(save_dir):
+            os.mkdir(save_dir)
+        assert os.path.isdir(save_dir), "The save directory already exists and it is not a directory!"
         self._checkpoint_save_fn = checkpoint_save_fn
         self._state_dict_provider_fn = state_dict_provider_fn
         self._curr_step = 0
         self._emergency_save_step = None
+        self._log_file = open(os.path.join(save_dir, "periflow_trainer.log"), "w")
 
         if not self._is_local:
             self._stat_ipc_channel.open()
@@ -91,8 +94,8 @@ class TrainingManager:
             self._wait_emergency_save_thread = Thread(target=self._wait_for_emergency_save_request, daemon=True)
             self._wait_emergency_save_thread.start()
 
-            # teardown will be called at exit of the program.
-            atexit.register(self.teardown)
+        # teardown will be called at exit of the program.
+        atexit.register(self.teardown)
 
 
     def teardown(self):
@@ -104,6 +107,8 @@ class TrainingManager:
             self._ack_ipc_channel.close()
             self._emergency_save_ipc_channel.close()
             self._wait_emergency_save_thread.join()
+
+        self._log_file.close()
 
 
     def _wait_for_emergency_save_request(self):
@@ -119,7 +124,7 @@ class TrainingManager:
 
 
     def ft_train_batch(self, train_batch_fn: Callable[..., TrainStepOutput]):
-        """ Decorator function for training batch function to support fault-tolerance.
+        """ Decorator function for training batch function to support automatic checkpoint save.
         """
         @functools.wraps(train_batch_fn)
         def wrapper(*args, **kwargs):
@@ -133,25 +138,29 @@ class TrainingManager:
 
             is_save_step = self._curr_step % self._save_interval == 0
 
-            iteration = kwargs.get('iteration', None)
-            model = kwargs.get('model', None)
-            optimizer = kwargs.get('optimizer', None)
-            lr_scheduler = kwargs.get('lr_scheduler', None)
-
             if is_save_step or self._curr_step == self._emergency_save_step:
+                iteration = kwargs.get('iteration', None)
+                model = kwargs.get('model', None)
+                optimizer = kwargs.get('optimizer', None)
+                lr_scheduler = kwargs.get('lr_scheduler', None)
+
                 checkpoint_path = os.path.join(self._save_dir, get_checkpoint_name(iteration))
                 state_dict = self._state_dict_provider_fn(iteration, model, optimizer, lr_scheduler)
                 self._checkpoint_save_fn(state_dict, checkpoint_path)
 
-            if is_save_step:
-                save_type = SaveType.PERIODIC
-            elif self._emergency_save_step is not None and self._curr_step == self._emergency_save_step:
-                save_type = SaveType.EMERGENCY
+                if is_save_step:
+                    save_type = SaveType.PERIODIC
+                elif self._emergency_save_step is not None and self._curr_step == self._emergency_save_step:
+                    save_type = SaveType.EMERGENCY
             else:
                 checkpoint_path= None
                 save_type = None
 
-            if not self._is_local:
+            if self._is_local:
+                step_output_dict = asdict(step_output)
+                step_output_dict["step_time"] = step_time
+                self._log_file.write(str(step_output_dict) + "\n")
+            else:
                 try:
                     # Write training stat of the current rank to FTModule via IPC channel.
                     msg = {
@@ -179,9 +188,11 @@ class TrainingManager:
                     return step_output
                 except IpcConnectionFailureException:
                     raise RuntimeError("IPC connection between training manager and FTModule is broken.")
+                
 
         return wrapper
 
 
 ft_train_manager = TrainingManager()
+init = ft_train_manager.init
 periflow_trainer = ft_train_manager.ft_train_batch

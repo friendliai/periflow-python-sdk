@@ -35,5 +35,6 @@ def persist_checkpoint(snapshot: Dict, ckpt_path: str):
         os.fsync(f.fileno())
 
     # Log finish file
-    with open(ckpt_path[:-18] + "_complete.log", "w") as log_f:
+    with open(ckpt_path + "_complete.log", "w") as log_f:
         log_f.write("success\n")
+        os.fsync(log_f.fileno())

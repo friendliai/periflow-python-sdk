@@ -29,7 +29,7 @@ parser.add_argument('--lr', default=0.1, type=float, help='learning rate')
 parser.add_argument('--resume', '-r', action='store_true', help='resume from checkpoint')
 parser.add_argument('--total-steps', '-s', default=58800, type=int, help='The total number of training steps')
 parser.add_argument('--consumed-steps', '-cs', default=0, type=int, help='The checkpointed steps')
-parser.add_argument('--save_intervals', '-i', default=1000, type=int, help='The checkpoint save intervals')
+parser.add_argument('--save_interval', '-i', default=50, type=int, help='The checkpoint save intervals')
 parser.add_argument('--save_dir', '-dir', default='save', type=str, help='The path to the save directory')
 args = parser.parse_args()
 
@@ -54,19 +54,19 @@ transform_test = transforms.Compose([
 trainset = torchvision.datasets.CIFAR10(
     root='./data', train=True, download=True, transform=transform_train)
 trainloader = torch.utils.data.DataLoader(
-    trainset, batch_size=256, shuffle=True, num_workers=2)
+    trainset, batch_size=256, shuffle=True, num_workers=4)
 
 testset = torchvision.datasets.CIFAR10(
     root='./data', train=False, download=True, transform=transform_test)
 testloader = torch.utils.data.DataLoader(
-    testset, batch_size=100, shuffle=False, num_workers=2)
+    testset, batch_size=100, shuffle=False, num_workers=4)
 
 classes = ('plane', 'car', 'bird', 'cat', 'deer',
            'dog', 'frog', 'horse', 'ship', 'truck')
 
 # Model
 print('==> Building model..')
-net = VGG('VGG19')
+net = VGG('VGG16')
 net = net.to(device)
 if device == 'cuda':
     net = torch.nn.DataParallel(net)
@@ -114,7 +114,7 @@ def train_batch(inputs,
 
     # Automatically logged.
     return CIFAR10TrainStepOutput(iteration=iteration,
-                                  trainig_loss=loss.item(),
+                                  training_loss=loss.item(),
                                   learning_rate=lr_scheduler.get_last_lr())
 
 
@@ -160,12 +160,13 @@ net.train()
 
 init(args.total_steps, args.save_interval, args.save_dir)
 
-for step in range(args.consumed_steps, args.total_steps):
+for step in range(args.consumed_steps + 1, args.total_steps + 1):
     try:
         inputs, targets = next(trainloader_iter)
     except StopIteration:
         # This indicates an end of epoch.
         test(epoch)
+        print(f"Epoch {epoch} has finished!")
         net.train()
         epoch += 1
 
