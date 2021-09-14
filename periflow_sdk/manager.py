@@ -31,7 +31,6 @@ class TrainStepOutput:
     Users are encouraged to add statistics to this class, so that Periflow can automatically log necessary data.
     """
     iteration: int
-    step_time: float
 
 
 class TrainingManager:
