@@ -70,7 +70,7 @@ class FifoReader(FifoBase):
         # Read-only and non-blocking
         return os.O_RDONLY | os.O_NONBLOCK
 
-    def read(self, timeout: int = None) -> Optional[bytes]:
+    def read(self, timeout: Optional[float] = None) -> Optional[bytes]:
         """ Read a message from the FIFO.
         If timeout is given, it specifies the length of time in milliseconds which the system will wait for events
         before returning. If timeout is omitted, negative, or None, the call will block until there is an event for the
@@ -191,7 +191,7 @@ class IpcChannelBundle:
             ipc_channel = get_default_ipc_channel(purpose, local_rank)
             self._ipc_channels.append(ipc_channel)
 
-    async def read_all(self, timeout: Optional[int] = None) -> List[dict]:
+    async def read_all(self, timeout: Optional[float] = None) -> List[dict]:
         """ Read all messages from the FIFOs under management.
         The call of this method will wait for the read for the specified length of time in milliseconds.
         If timeout is omitted, negative, or None, the call will block until it reads all the messages from every FIFO.

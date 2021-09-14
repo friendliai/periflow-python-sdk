@@ -6,13 +6,12 @@ import torch
 def ensure_directory_exists(filename):
     """Build filename's path if it does not already exists."""
     dirname = os.path.dirname(filename)
-    if not os.path.exists(dirname):
-        os.makedirs(dirname)
+    os.makedirs(dirname, exist_ok=True)
 
 
 def to_cpu(ele, snapshot=None):
     if snapshot is None:
-	    snapshot = {}
+        snapshot = {}
     if hasattr(ele, 'cpu'):
         snapshot = ele.cpu()
     elif isinstance(ele, dict):
