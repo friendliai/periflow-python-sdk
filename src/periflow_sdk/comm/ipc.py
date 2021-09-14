@@ -118,7 +118,7 @@ class IpcChannel:
         self._writer = FifoWriter(fifoname)
         self._opened = False
 
-    def read(self, timeout: int = None) -> dict:
+    def read(self, timeout: Optional[float] = None) -> dict:
         if not self._opened:
             msg = "IPC channel is not open. Call open() or __enter__ first."
             raise IpcChannelNotOpenedError(msg)
