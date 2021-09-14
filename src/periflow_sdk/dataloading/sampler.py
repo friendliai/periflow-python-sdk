@@ -1,7 +1,12 @@
+""" The module for classes
+"""
+
 import math
 import torch
 
 class ResumableSequentialSampler:
+    """ The resumble sequential sampler.
+    """
     def __init__(self,
                  samples_per_epoch: int,
                  processed_steps: int,
@@ -33,6 +38,8 @@ class ResumableSequentialSampler:
 
 
 class ResumableRandomSampler:
+    """ The random sampler that supports deterministic & resumable random sampling.
+    """
     def __init__(self,
                  samples_per_epoch: int,
                  processed_steps: int,

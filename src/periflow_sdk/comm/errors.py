@@ -1,3 +1,6 @@
+"""Exceptions that can be raised during IPC
+"""
+
 class IpcException(Exception):
     pass
 

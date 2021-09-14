@@ -47,7 +47,8 @@ setup(
     license="Apache License 2.0",
     url = "https://github.com/friendliai/periflow-python-sdk",
     description = "PeriFlow SDK",
-    packages=find_packages(include=['periflow_sdk', 'periflow_sdk.*']),
+    packages=find_packages(where='src'),
+    package_dir={'':'src'},
     classifiers=[
         "Programming Language :: Python :: 3",
         "Natural Language :: English",

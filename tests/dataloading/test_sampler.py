@@ -1,3 +1,6 @@
+""" Test module for samplers
+"""
+
 import pytest
 
 from periflow_sdk.dataloading.sampler import ResumableRandomSampler, ResumableSequentialSampler
@@ -5,6 +8,7 @@ from periflow_sdk.dataloading.sampler import ResumableRandomSampler, ResumableSe
 @pytest.fixture
 def dataset():
     return [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+
 
 def test_sequential_sampler_normal(dataset):
     sampler = ResumableSequentialSampler(samples_per_epoch=len(dataset),

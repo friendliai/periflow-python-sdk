@@ -1,7 +1,12 @@
-import torch
+""" The module for state providers.
+"""
+
+
 import random
-import numpy as np
 from typing import Dict
+
+import numpy as np
+import torch
 
 
 def default_state_provider(iteration: int,

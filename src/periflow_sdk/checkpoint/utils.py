@@ -1,6 +1,7 @@
-import os
+""" Utility functions for checkpointing.
+"""
 
-import torch
+import os
 
 
 def ensure_directory_exists(filename):
@@ -10,6 +11,8 @@ def ensure_directory_exists(filename):
 
 
 def to_cpu(ele, snapshot=None):
+    """Move GPU memory snapshots to CPU
+    """
     if snapshot is None:
         snapshot = {}
     if hasattr(ele, 'cpu'):

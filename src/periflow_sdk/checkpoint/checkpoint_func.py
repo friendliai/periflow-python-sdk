@@ -1,7 +1,9 @@
-import torch
+""" The module for checkpoint functions.
+"""
 import os
 from typing import Dict
 
+import torch
 from .utils import ensure_directory_exists, to_cpu
 
 
