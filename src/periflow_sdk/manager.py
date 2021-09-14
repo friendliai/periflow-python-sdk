@@ -1,23 +1,27 @@
+"""The periflow training manager module.
+"""
+
 import os
 import atexit
 from enum import Enum
 from dataclasses import dataclass, asdict
 import functools
-from periflow_sdk.checkpoint.checkpoint_func import sync_checkpoint_func
-from periflow_sdk.checkpoint.state_provider import default_state_provider
 import time
 import sys
 from threading import Thread
 from typing import Callable, Dict
 import logging
 
-from .comm.ipc import IpcCommPurpose, CommResultStatus, get_default_ipc_channel
-from .comm.errors import IpcTimeoutException, IpcConnectionFailureException
+from periflow_sdk.checkpoint.checkpoint_func import sync_checkpoint_func
+from periflow_sdk.checkpoint.state_provider import default_state_provider
+from periflow_sdk.comm.ipc import IpcCommPurpose, CommResultStatus, get_default_ipc_channel
+from periflow_sdk.comm.errors import IpcTimeoutException, IpcConnectionFailureException
 
 periflow_logger = logging.getLogger("periflow")
 
-def get_checkpoint_name(iter: int):
-    return 'iter_{:07d}'.format(iter)
+
+def get_checkpoint_name(it: int) -> str:
+    return 'iter_{:07d}'.format(it)
 
 
 class SaveType(str, Enum):
@@ -38,7 +42,7 @@ class TrainingManager:
     """
     def __init__(self):
 
-        self._is_local = os.environ.get("PERYFLOW_ENABLED") != "1"
+        self._is_local = os.environ.get("PERIFLOW_ENABLED") != "1"
 
         if self._is_local:
             self._stat_ipc_channel = None
@@ -183,11 +187,9 @@ class TrainingManager:
                     # If emergency save is done, terminate the training process.
                     if save_type is SaveType.EMERGENCY:
                         sys.exit()
-
-                    return step_output
-                except IpcConnectionFailureException:
-                    raise RuntimeError("IPC connection between training manager and FTModule is broken.")
-                
+                except IpcConnectionFailureException as ipc_connection_failure:
+                    raise RuntimeError("IPC connection between training manager and FTModule is broken.") \
+                         from ipc_connection_failure
 
         return wrapper
 

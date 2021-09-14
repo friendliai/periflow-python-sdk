@@ -2,7 +2,6 @@
 """
 
 import asyncio
-from asyncio.events import get_running_loop
 import json
 import os
 import select
@@ -10,8 +9,8 @@ import struct
 from enum import Enum
 from contextlib import suppress
 from concurrent.futures.thread import ThreadPoolExecutor
-from concurrent.futures import Future, CancelledError
-from typing import Literal, List, Optional
+from concurrent.futures import CancelledError
+from typing import List, Optional
 
 from .errors import (
     IpcChannelIOError,
@@ -109,6 +108,8 @@ class FifoWriter(FifoBase):
 
 
 class IpcChannel:
+    """ The IPC Channel for communication between processes
+    """
     def __init__(self,
                  fifoname: str,
                  local_rank: Optional[int] = None):
@@ -136,8 +137,8 @@ class IpcChannel:
         msg = json.dumps(msg).encode()
         try:
             self._writer.write(msg)
-        except BrokenPipeError:
-            raise IpcConnectionFailureException
+        except BrokenPipeError as broken_pipe_error:
+            raise IpcConnectionFailureException from broken_pipe_error
 
     def open(self):
         if self._opened:
