@@ -17,7 +17,6 @@ def save_cpu_memory(state_dict: Dict):
     """
     snapshot = {}
     for name, ref in state_dict.items():
-        snapshot[name] = {}
         snapshot[name] = to_cpu(ref)
 
     return snapshot

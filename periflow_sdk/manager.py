@@ -39,7 +39,7 @@ class TrainingManager:
     """
     def __init__(self):
 
-        self._is_local = "PERYFLOW_ENABLED" not in os.environ or os.environ["PERYFLOW_ENABLED"] != 1
+        self._is_local = os.environ.get("PERYFLOW_ENABLED") != "1"
 
         if self._is_local:
             self._stat_ipc_channel = None
