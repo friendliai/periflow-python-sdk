@@ -27,11 +27,10 @@ class CIFAR10TrainStepOutput(TrainStepOutput):
 
 parser = argparse.ArgumentParser(description='PyTorch CIFAR10 Training')
 parser.add_argument('--lr', default=0.1, type=float, help='learning rate')
-parser.add_argument('--resume', '-r', action='store_true', help='resume from checkpoint')
 parser.add_argument('--total-steps', '-s', default=58800, type=int, help='The total number of training steps')
 parser.add_argument('--consumed-steps', '-cs', default=0, type=int, help='The checkpointed steps')
-parser.add_argument('--save_interval', '-i', default=50, type=int, help='The checkpoint save intervals')
-parser.add_argument('--save_dir', '-dir', default='save', type=str, help='The path to the save directory')
+parser.add_argument('--save-interval', '-i', default=500, type=int, help='The checkpoint save intervals')
+parser.add_argument('--save-dir', '-dir', default='save', type=str, help='The path to the save directory')
 parser.add_argument('--seed', default=777, type=int, help='The seed for random generator')
 args = parser.parse_args()
 
@@ -74,17 +73,6 @@ if device == 'cuda':
     net = torch.nn.DataParallel(net)
     cudnn.benchmark = True
 
-
-#if args.resume:
-    # Load checkpoint.
-#    print('==> Resuming from checkpoint..')
-#    assert os.path.isdir('checkpoint'), 'Error: no checkpoint directory found!'
-#    checkpoint = torch.load('./checkpoint/ckpt.pth')
-#    net.load_state_dict(checkpoint['net'])
-#    best_acc = checkpoint['acc']
- #   start_epoch = checkpoint['epoch']
-
-
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.SGD(net.parameters(), lr=args.lr,
                       momentum=0.9, weight_decay=5e-4)
@@ -92,6 +80,17 @@ steps_per_epoch = math.ceil(50000 / 256)
 scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer,
                                                  milestones=[100 * steps_per_epoch, 200 * steps_per_epoch],
                                                  gamma=0.1)
+
+if args.consumed_steps > 0:
+    # Load checkpoint.
+    print('==> Resuming from checkpoint..')
+    assert os.path.isdir(args.save_dir), 'Error: no checkpoint directory found!'
+    checkpoint = torch.load(os.path.join(args.save_dir, 'iter_{:07d}'.format(args.consumed_steps)), map_location='cpu')
+    net.load_state_dict(checkpoint['model'])
+    if 'optimizer' in checkpoint:
+        optimizer.load_state_dict(checkpoint['optimizer'])
+    if 'lr_scheduler' in checkpoint:
+        scheduler.load_state_dict(checkpoint['lr_scheduler'])
 
 
 @periflow_trainer
@@ -108,11 +107,6 @@ def train_batch(inputs,
     loss.backward()
     optimizer.step()
     lr_scheduler.step()
-
-    #train_loss += loss.item()
-    #_, predicted = outputs.max(1)
-    #total += targets.size(0)
-    #correct += predicted.eq(targets).sum().item()
 
     # Automatically logged.
     return CIFAR10TrainStepOutput(iteration=iteration,
@@ -140,22 +134,8 @@ def test(epoch):
             progress_bar(batch_idx, len(testloader), 'Loss: %.3f | Acc: %.3f%% (%d/%d)'
                          % (test_loss/(batch_idx+1), 100.*correct/total, correct, total))
 
-    # Save checkpoint.
-    acc = 100.*correct/total
-    if acc > best_acc:
-        print('Saving..')
-        state = {
-            'net': net.state_dict(),
-            'acc': acc,
-            'epoch': epoch,
-        }
-        if not os.path.isdir('checkpoint'):
-            os.mkdir('checkpoint')
-        torch.save(state, './checkpoint/ckpt.pth')
-        best_acc = acc
 
-
-epoch = 1
+epoch = args.consumed_steps * 256 // len(trainset) + 1
 trainloader_iter = iter(trainloader)
 
 net.train()

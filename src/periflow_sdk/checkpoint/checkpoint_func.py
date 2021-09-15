@@ -10,8 +10,7 @@ from .utils import ensure_directory_exists, to_cpu
 def sync_checkpoint_func(state_dict: Dict, ckpt_path: str):
     """ The synchronous checkpoint function.
     """
-    snapshot = save_cpu_memory(state_dict)
-    persist_checkpoint(snapshot, ckpt_path)
+    persist_checkpoint(state_dict, ckpt_path)
 
 
 def save_cpu_memory(state_dict: Dict):
