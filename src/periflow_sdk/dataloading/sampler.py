@@ -11,7 +11,7 @@ class ResumableSequentialSampler:
                  samples_per_epoch: int,
                  processed_steps: int,
                  batch_size: int,
-                 drop_last: bool,
+                 drop_last: bool = False,
                  data_parallel_rank: int = 0,
                  data_parallel_size: int = 1):
         self._samples_per_epoch = samples_per_epoch
@@ -57,7 +57,7 @@ class ResumableRandomSampler:
                  samples_per_epoch: int,
                  processed_steps: int,
                  batch_size: int,
-                 drop_last: bool,
+                 drop_last: bool = False,
                  seed: int = 0,
                  data_parallel_rank: int = 0,
                  data_parallel_size: int = 1):

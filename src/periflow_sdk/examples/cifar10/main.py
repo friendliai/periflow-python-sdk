@@ -17,6 +17,7 @@ from models import *
 from utils import progress_bar
 
 from periflow_sdk.manager import TrainStepOutput, init, periflow_trainer
+from periflow_sdk.dataloading.sampler import ResumableRandomSampler
 
 @dataclass
 class CIFAR10TrainStepOutput(TrainStepOutput):
@@ -31,6 +32,7 @@ parser.add_argument('--total-steps', '-s', default=58800, type=int, help='The to
 parser.add_argument('--consumed-steps', '-cs', default=0, type=int, help='The checkpointed steps')
 parser.add_argument('--save_interval', '-i', default=50, type=int, help='The checkpoint save intervals')
 parser.add_argument('--save_dir', '-dir', default='save', type=str, help='The path to the save directory')
+parser.add_argument('--seed', default=777, type=int, help='The seed for random generator')
 args = parser.parse_args()
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -54,7 +56,7 @@ transform_test = transforms.Compose([
 trainset = torchvision.datasets.CIFAR10(
     root='./data', train=True, download=True, transform=transform_train)
 trainloader = torch.utils.data.DataLoader(
-    trainset, batch_size=256, shuffle=True, num_workers=4)
+    trainset, batch_sampler=ResumableRandomSampler(len(trainset), args.consumed_steps, 256, False), num_workers=4)
 
 testset = torchvision.datasets.CIFAR10(
     root='./data', train=False, download=True, transform=transform_test)
