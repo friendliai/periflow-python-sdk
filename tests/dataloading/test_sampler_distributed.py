@@ -124,3 +124,22 @@ def test_random_sampler_distributed(dataset):
 
     assert second_local_batch == resumed_second_local_batch
     assert third_local_batch == resumed_third_local_batch
+
+    # Resume a sampler after an epoch
+    i = iter(sampler)
+    next(i)
+    fifth_local_batch = next(i)
+    sixth_local_batch = next(i)
+
+    sampler4 = ResumableRandomSampler(samples_per_epoch=len(dataset),
+                                      processed_steps=4,
+                                      batch_size=4,
+                                      drop_last=False,
+                                      seed = 77,
+                                      data_parallel_rank = 0,
+                                      data_parallel_size = 2)
+    i4 = iter(sampler4)
+    resumed_fifth_local_batch = next(i4)
+    resumed_sixth_local_batch = next(i4)
+    assert fifth_local_batch == resumed_fifth_local_batch
+    assert sixth_local_batch == resumed_sixth_local_batch
