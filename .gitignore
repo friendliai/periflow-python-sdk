@@ -131,3 +131,4 @@ dmypy.json
 iter_*
 cifar-10*
 *.pth
+build.sh

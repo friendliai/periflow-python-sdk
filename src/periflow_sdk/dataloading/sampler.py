@@ -64,10 +64,8 @@ class ResumableRandomSampler:
         self._samples_per_epoch = samples_per_epoch
         self._batch_size = batch_size
         steps_per_epoch = math.ceil(samples_per_epoch / batch_size)
-        self._cur_epoch = processed_steps // steps_per_epoch + 1
-        self._consumed_samples = (processed_steps // steps_per_epoch) * samples_per_epoch + \
-            (processed_steps % steps_per_epoch) * batch_size
-        self._consumed_samples_cur_epoch = self._consumed_samples % samples_per_epoch
+        self._cur_epoch = processed_steps // steps_per_epoch
+        self._consumed_samples_cur_epoch = (processed_steps % steps_per_epoch) * batch_size
         self._drop_last = drop_last
         self._seed = seed
 
@@ -85,13 +83,14 @@ class ResumableRandomSampler:
 
     def __iter__(self):
         g = torch.Generator()
-        g.manual_seed(self._cur_epoch)
-        random_idx = torch.randperm(self._samples_per_epoch // self._data_parallel_size, generator=g).tolist()
+        # We avoid seed 0 for good random generation.
+        g.manual_seed(self._cur_epoch + self._seed + 1)
+        random_indices = torch.randperm(self._samples_per_epoch // self._data_parallel_size, generator=g).tolist()
         start_idx = self._consumed_samples_cur_epoch // self._data_parallel_size
         offset = (self._samples_per_epoch // self._data_parallel_size) * self._data_parallel_rank
         batch = []
         for index in range(start_idx, self._samples_per_epoch // self._data_parallel_size):
-            batch.append(offset + random_idx[index])
+            batch.append(offset + random_indices[index])
             if len(batch) == self._batch_size // self._data_parallel_size:
                 yield batch
                 batch = []

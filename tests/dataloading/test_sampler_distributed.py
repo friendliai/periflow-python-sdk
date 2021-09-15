@@ -2,6 +2,7 @@
 """
 
 import pytest
+from typing import List
 
 from periflow_sdk.dataloading.sampler import ResumableRandomSampler, ResumableSequentialSampler
 
@@ -10,7 +11,7 @@ def dataset():
     return [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 
 
-def test_sequential_sampler_distributed(dataset):
+def test_sequential_sampler_distributed(dataset: List[int]):
 
     sampler = ResumableSequentialSampler(samples_per_epoch=len(dataset),
                                          processed_steps=0,
@@ -65,8 +66,7 @@ def test_sequential_sampler_distributed(dataset):
     assert next(i4) == dataset[8:9]
 
 
-
-def test_random_sampler_distributed(dataset):
+def test_random_sampler_distributed(dataset: List[int]):
 
     sampler = ResumableRandomSampler(samples_per_epoch=len(dataset),
                                      processed_steps=0,
