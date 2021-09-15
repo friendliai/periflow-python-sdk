@@ -43,7 +43,8 @@ class ResumableSequentialSampler:
                     :(self._data_parallel_rank + 1) * (self._batch_size // self._data_parallel_size)]
                 batch = []
         if len(batch) > 0 and not self._drop_last:
-            yield batch
+            yield batch[self._data_parallel_rank * (len(batch) // self._data_parallel_size) \
+                    :(self._data_parallel_rank + 1) * (len(batch) // self._data_parallel_size)]
             batch = []
         # Initialize the cur index for the future epochs
         self._cur_index = 0
