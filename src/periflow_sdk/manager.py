@@ -48,12 +48,14 @@ class TrainingManager:
             self._stat_ipc_channel = None
             self._ack_ipc_channel = None
             self._emergency_save_ipc_channel = None
+            self._local_rank = None
         else:
             host_slot_list = list(map(int, os.environ["HOST_SLOT_LIST"].split(",")))
             node_rank = int(os.environ["NODE_RANK"])
             num_devices = host_slot_list[node_rank]
             rank = int(os.environ['RANK'])
             local_rank = rank % num_devices
+            self._local_rank = local_rank
             self._stat_ipc_channel = get_default_ipc_channel(purpose=IpcCommPurpose.STAT,
                                                              local_rank=local_rank)
             self._ack_ipc_channel = get_default_ipc_channel(purpose=IpcCommPurpose.ACK,
@@ -67,7 +69,8 @@ class TrainingManager:
              save_interval: int = 0,
              save_dir: str = None,
              checkpoint_save_fn: Callable[[Dict, str], None] = sync_checkpoint_func,
-             state_dict_provider_fn: Callable[..., None] = default_state_provider):
+             state_dict_provider_fn: Callable[..., None] = default_state_provider,
+             local_rank: int = 0):
         """ Initialize training manager.
 
         Arguments:
@@ -96,6 +99,7 @@ class TrainingManager:
             # Start a thread waiting for emergency save request.
             self._wait_emergency_save_thread = Thread(target=self._wait_for_emergency_save_request, daemon=True)
             self._wait_emergency_save_thread.start()
+            self._local_rank = local_rank
 
         # teardown will be called at exit of the program.
         atexit.register(self.teardown)
@@ -148,8 +152,10 @@ class TrainingManager:
                 lr_scheduler = kwargs.get('lr_scheduler', None)
 
                 checkpoint_path = os.path.join(self._save_dir, get_checkpoint_name(iteration))
-                state_dict = self._state_dict_provider_fn(iteration, model, optimizer, lr_scheduler)
-                self._checkpoint_save_fn(state_dict, checkpoint_path)
+                # Checkpointing is done only when the local rank is zero.
+                if self._local_rank == 0:
+                    state_dict = self._state_dict_provider_fn(iteration, model, optimizer, lr_scheduler)
+                    self._checkpoint_save_fn(state_dict, checkpoint_path)
 
                 if is_save_step:
                     save_type = SaveType.PERIODIC

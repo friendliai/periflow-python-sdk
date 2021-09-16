@@ -14,7 +14,6 @@ import argparse
 import math
 
 from models import *
-from utils import progress_bar
 
 from periflow_sdk.manager import TrainStepOutput, init, periflow_trainer
 from periflow_sdk.dataloading.sampler import ResumableRandomSampler
@@ -130,9 +129,6 @@ def test(epoch):
             _, predicted = outputs.max(1)
             total += targets.size(0)
             correct += predicted.eq(targets).sum().item()
-
-            progress_bar(batch_idx, len(testloader), 'Loss: %.3f | Acc: %.3f%% (%d/%d)'
-                         % (test_loss/(batch_idx+1), 100.*correct/total, correct, total))
 
 
 epoch = args.consumed_steps * 256 // len(trainset) + 1
