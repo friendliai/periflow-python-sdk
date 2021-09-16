@@ -45,11 +45,13 @@ class TrainingManager:
         self._is_local = os.environ.get("PERIFLOW_ENABLED") != "1"
 
         if self._is_local:
+            periflow_logger.info("Periflow SDK is working in local mode.")
             self._stat_ipc_channel = None
             self._ack_ipc_channel = None
             self._emergency_save_ipc_channel = None
             self._local_rank = None
         else:
+            periflow_logger.info("Periflow SDK is working in cloud mode.")
             host_slot_list = list(map(int, os.environ["HOST_SLOT_LIST"].split(",")))
             node_rank = int(os.environ["NODE_RANK"])
             num_devices = host_slot_list[node_rank]

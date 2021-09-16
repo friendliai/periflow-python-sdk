@@ -11,6 +11,7 @@ from contextlib import suppress
 from concurrent.futures.thread import ThreadPoolExecutor
 from concurrent.futures import CancelledError
 from typing import List, Optional
+import logging
 
 from .errors import (
     IpcChannelIOError,
@@ -18,6 +19,8 @@ from .errors import (
     IpcTimeoutException,
     IpcConnectionFailureException,
 )
+
+periflow_logger = logging.getLogger("periflow")
 
 
 class CommResultStatus(str, Enum):
@@ -197,6 +200,7 @@ class IpcChannelBundle:
         The call of this method will wait for the read for the specified length of time in milliseconds.
         If timeout is omitted, negative, or None, the call will block until it reads all the messages from every FIFO.
         """
+        periflow_logger.debug("now read all")
         return await self._execute_in_thread_pool("read", timeout)
 
     async def write_all(self, msg: dict):
@@ -240,6 +244,7 @@ class IpcChannelBundle:
         try:
             return await asyncio.gather(*futures)
         except Exception as exc:
+            periflow_logger.error(f"Exception: ({exc}) occurs.")
             for future in futures:
                 future.cancel()
             for future in futures:
