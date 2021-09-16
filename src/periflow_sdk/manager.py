@@ -55,15 +55,6 @@ class TrainingManager:
             host_slot_list = list(map(int, os.environ["HOST_SLOT_LIST"].split(",")))
             node_rank = int(os.environ["NODE_RANK"])
             num_devices = host_slot_list[node_rank]
-            rank = int(os.environ['RANK'])
-            local_rank = rank % num_devices
-            self._local_rank = local_rank
-            self._stat_ipc_channel = get_default_ipc_channel(purpose=IpcCommPurpose.STAT,
-                                                             local_rank=local_rank)
-            self._ack_ipc_channel = get_default_ipc_channel(purpose=IpcCommPurpose.ACK,
-                                                            local_rank=local_rank)
-            self._emergency_save_ipc_channel = get_default_ipc_channel(purpose=IpcCommPurpose.EMERGENCY_SAVE,
-                                                                       local_rank=local_rank)
 
 
     def init(self,
@@ -93,7 +84,15 @@ class TrainingManager:
         self._emergency_save_step = None
         self._log_file = open(os.path.join(save_dir, "periflow_trainer.log"), "w")
 
+        self._local_rank = local_rank
+
         if not self._is_local:
+            self._stat_ipc_channel = get_default_ipc_channel(purpose=IpcCommPurpose.STAT,
+                                                             local_rank=local_rank)
+            self._ack_ipc_channel = get_default_ipc_channel(purpose=IpcCommPurpose.ACK,
+                                                            local_rank=local_rank)
+            self._emergency_save_ipc_channel = get_default_ipc_channel(purpose=IpcCommPurpose.EMERGENCY_SAVE,
+                                                                       local_rank=local_rank)
             self._stat_ipc_channel.open()
             self._ack_ipc_channel.open()
             self._emergency_save_ipc_channel.open()
@@ -101,7 +100,6 @@ class TrainingManager:
             # Start a thread waiting for emergency save request.
             self._wait_emergency_save_thread = Thread(target=self._wait_for_emergency_save_request, daemon=True)
             self._wait_emergency_save_thread.start()
-            self._local_rank = local_rank
 
         # teardown will be called at exit of the program.
         atexit.register(self.teardown)

@@ -30,6 +30,7 @@ parser.add_argument('--total-steps', '-s', default=58800, type=int, help='The to
 parser.add_argument('--consumed-steps', '-cs', default=0, type=int, help='The checkpointed steps')
 parser.add_argument('--save-interval', '-i', default=500, type=int, help='The checkpoint save intervals')
 parser.add_argument('--save-dir', '-dir', default='save', type=str, help='The path to the save directory')
+parser.add_argument('--local-rank', '-r', default=0, type=int, help='The local rank of this process')
 parser.add_argument('--seed', default=777, type=int, help='The seed for random generator')
 args = parser.parse_args()
 
@@ -51,16 +52,6 @@ transform_test = transforms.Compose([
     transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
 ])
 
-trainset = torchvision.datasets.CIFAR10(
-    root='./data', train=True, download=True, transform=transform_train)
-trainloader = torch.utils.data.DataLoader(
-    trainset, batch_sampler=ResumableRandomSampler(len(trainset), args.consumed_steps, 256, False), num_workers=4)
-
-testset = torchvision.datasets.CIFAR10(
-    root='./data', train=False, download=True, transform=transform_test)
-testloader = torch.utils.data.DataLoader(
-    testset, batch_size=100, shuffle=False, num_workers=4)
-
 classes = ('plane', 'car', 'bird', 'cat', 'deer',
            'dog', 'frog', 'horse', 'ship', 'truck')
 
@@ -68,9 +59,34 @@ classes = ('plane', 'car', 'bird', 'cat', 'deer',
 print('==> Building model..')
 net = VGG('VGG16')
 net = net.to(device)
-if device == 'cuda':
+
+is_ddp = 'WORLD_SIZE' in os.environ and os.environ['WORLD_SIZE'] > 1
+
+if is_ddp:
+    torch.cuda.set_device(args.local_rank)
+    torch.distributed.init_process_group(backend='nccl', init_method='env://')
+    distributed_parallel_size = torch.distributed.get_world_size()
+    net = torch.nn.parallel.DistributedDataParallel(net, device_ids=[args.local_rank])
+
+elif device == 'cuda':
     net = torch.nn.DataParallel(net)
     cudnn.benchmark = True
+
+trainset = torchvision.datasets.CIFAR10(
+    root='./data', train=True, download=True, transform=transform_train)
+if is_ddp:
+    # Use distributed sampler
+    sampler = ResumableRandomSampler(len(trainset), args.consumed_steps, 256 // distributed_parallel_size, False,
+                                     args.local_args, distributed_parallel_size)
+else:
+    sampler = ResumableRandomSampler(len(trainset), args.consumed_steps, 256, False)
+trainloader = torch.utils.data.DataLoader(
+    trainset, batch_sampler=sampler, num_workers=4)
+
+testset = torchvision.datasets.CIFAR10(
+    root='./data', train=False, download=True, transform=transform_test)
+testloader = torch.utils.data.DataLoader(
+    testset, batch_size=100, shuffle=False, num_workers=4)
 
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.SGD(net.parameters(), lr=args.lr,
@@ -136,7 +152,7 @@ trainloader_iter = iter(trainloader)
 
 net.train()
 
-init(args.total_steps, args.save_interval, args.save_dir)
+init(args.total_steps, args.save_interval, args.save_dir, local_rank=args.local_rank)
 
 for step in range(args.consumed_steps + 1, args.total_steps + 1):
     try:
