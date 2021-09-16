@@ -60,7 +60,7 @@ print('==> Building model..')
 net = VGG('VGG16')
 net = net.to(device)
 
-is_ddp = 'WORLD_SIZE' in os.environ and os.environ['WORLD_SIZE'] > 1
+is_ddp = 'WORLD_SIZE' in os.environ and int(os.environ['WORLD_SIZE']) > 1
 
 if is_ddp:
     torch.cuda.set_device(args.local_rank)
