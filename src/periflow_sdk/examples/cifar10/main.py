@@ -15,7 +15,7 @@ import math
 
 from models import *
 
-from periflow_sdk.manager import TrainStepOutput, init, periflow_trainer
+from periflow_sdk.manager import TrainStepOutput, init, periflow_trainer, add_modules_and_recover, recover_samplers
 from periflow_sdk.dataloading.sampler import ResumableRandomSampler
 
 @dataclass
@@ -146,13 +146,14 @@ trainloader_iter = iter(trainloader)
 net.train()
 
 latest_step = init(args.total_steps,
-                net,
-                optimizer,
-                scheduler,
-                sampler,
                 args.save_interval,
                 args.save_dir,
                 local_rank=args.local_rank)
+add_modules_and_recover({
+    'model': net,
+    'optimizer': optimizer,
+    'lr_scheduler': scheduler})
+recover_samplers([sampler])
 
 epoch = latest_step * args.batch_size // len(trainset) + 1
 

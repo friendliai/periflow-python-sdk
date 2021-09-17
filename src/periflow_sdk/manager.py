@@ -9,7 +9,7 @@ import functools
 import time
 import sys
 from threading import Thread
-from typing import Callable, Dict
+from typing import Callable, Dict, List
 import logging
 
 import torch
@@ -56,10 +56,6 @@ class TrainingManager:
 
     def init(self,
              total_train_steps: int,
-             model,
-             optimizer = None,
-             lr_scheduler = None,
-             sampler = None,
              save_interval: int = 0,
              save_dir: str = None,
              checkpoint_save_fn: Callable[[Dict, str], None] = sync_checkpoint_func,
@@ -74,10 +70,7 @@ class TrainingManager:
                                   checkpoint file.
         """
         self._total_train_steps = total_train_steps
-        self._model = model
-        self._optimizer = optimizer
-        self._lr_scheduler = lr_scheduler
-        self._sampler = sampler
+        self._modules = {}
         self._save_interval = save_interval
         self._save_dir = save_dir
         if save_dir:
@@ -107,31 +100,45 @@ class TrainingManager:
         # Recover from the latest checkpoint.
         # First, we search the latest checkpoint.
         latest_iter = 0
+        self._checkpoint = None
         if save_dir:
             latest_ckpt_file_path = os.path.join(save_dir, "latest_checkpointed_iteration.txt")
             try:
                 with open(latest_ckpt_file_path, "r") as latest_ckpt_file:
                     latest_iter = int(latest_ckpt_file.readline().strip())
             except FileNotFoundError:
-                periflow_logger.info("Cannot find latest checkpointed iteration from the directory!")
+                periflow_logger.info("Cannot find latest checkpointed iteration from the directory! Start from 0...")
         # There is a checkpoint that we need to recover from...
         if latest_iter > 0:
             ckpt_path = os.path.join(save_dir, get_checkpoint_name(latest_iter))
-            checkpoint = torch.load(ckpt_path, map_location='cpu')
-            model.load_state_dict(checkpoint['model'])
-            if 'optimizer' in checkpoint:
-                optimizer.load_state_dict(checkpoint['optimizer'])
-            if 'lr_scheduler' in checkpoint:
-                lr_scheduler.load_state_dict(checkpoint['lr_scheduler'])
-            # TODO: Recover rng states.
-            assert hasattr(sampler, "set_processed_steps"), "Sampler should be one of 'ResumableRandomSampler' or 'ResumableSequentialSasmpler'!"
-            sampler.set_processed_steps(latest_iter)
+            self._checkpoint = torch.load(ckpt_path, map_location='cpu')
 
         self._cur_iter = latest_iter
+        self._has_train_started = False
 
         # teardown will be called at exit of the program.
         atexit.register(self.teardown)
         return latest_iter
+
+
+    def add_modules_and_recover(self, modules: Dict):
+        assert not self._has_train_started, "Cannot add modules after training has started!"
+        for k, v in modules.items():
+            assert k not in self._modules, "Cannot add an existing module!"
+            assert hasattr(v, 'load_state_dict') and hasattr(v, 'state_dict'), "Recoverable modules should have 'load_state_dict()' and " + \
+                "'state_dict()' method!"
+            self._modules[k] = v
+            if self._checkpoint is not None:
+                # There are some states to recover...
+                assert k in self._checkpoint, f"Cannot find the key '{k}' in the saved checkpoint!,"
+                # Recover the checkpointed states
+                v.load_state_dict(self._checkpoint[k])
+
+
+    def recover_samplers(self, samplers: List):
+        for sampler in samplers:
+            assert hasattr(sampler, 'set_processed_steps'), "Samplers should have 'set_processed_steps()'"
+            sampler.set_processed_steps(self._cur_iter)
 
 
     def teardown(self):
@@ -164,6 +171,9 @@ class TrainingManager:
         """
         @functools.wraps(train_batch_fn)
         def wrapper(*args, **kwargs):
+            if not self._has_train_started:
+                self._checkpoint = None
+                
             start_time = time.time()
             self._cur_iter += 1
             step_output = train_batch_fn(*args, **kwargs)
@@ -178,7 +188,7 @@ class TrainingManager:
                 # Checkpointing is done only when the local rank is zero.
                 if self._local_rank == 0:
                     os.makedirs(os.path.dirname(checkpoint_path), exist_ok=True)
-                    state_dict = self._state_dict_provider_fn(self._cur_iter, self._model, self._optimizer, self._lr_scheduler)
+                    state_dict = self._state_dict_provider_fn(self._cur_iter, self._modules)
                     self._checkpoint_save_fn(state_dict, checkpoint_path)
                     if self._is_local:
                         with open(os.path.join(self._save_dir, "latest_checkpointed_iteration.txt"), "w") as iter_log:
@@ -230,3 +240,5 @@ class TrainingManager:
 ft_train_manager = TrainingManager()
 init = ft_train_manager.init
 periflow_trainer = ft_train_manager.ft_train_batch
+add_modules_and_recover = ft_train_manager.add_modules_and_recover
+recover_samplers = ft_train_manager.recover_samplers
