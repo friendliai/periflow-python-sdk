@@ -67,6 +67,7 @@ def test_random_sampler_normal(dataset: List[int]):
     assert len(sampled_data) == 8
     sampled_data.update(next(i))
     assert len(sampled_data) == 10
+    assert max(sampled_data) == 9
 
     # Test drop last
     sampler = ResumableRandomSampler(samples_per_epoch=len(dataset),
@@ -131,7 +132,7 @@ def test_random_sampler_resume(dataset: List[int]):
     sampled_data.update(new_third_batch)
     # Assures that random sampling order is just the same, after the recovery.
     assert third_batch == new_third_batch
-    
+
     with pytest.raises(StopIteration):
         next(i2)
 

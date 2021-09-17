@@ -29,7 +29,7 @@ parser.add_argument('--lr', default=0.1, type=float, help='learning rate')
 parser.add_argument('--total-steps', '-s', default=58800, type=int, help='The total number of training steps')
 parser.add_argument('--save-interval', '-i', default=500, type=int, help='The checkpoint save intervals')
 parser.add_argument('--save-dir', '-dir', default='save', type=str, help='The path to the save directory')
-parser.add_argument('--local-rank', '-r', default=0, type=int, help='The local rank of this process')
+parser.add_argument('--local_rank', '-r', default=0, type=int, help='The local rank of this process')
 parser.add_argument('--seed', default=777, type=int, help='The seed for random generator')
 args = parser.parse_args()
 
@@ -58,13 +58,15 @@ classes = ('plane', 'car', 'bird', 'cat', 'deer',
 print('==> Building model..')
 net = VGG('VGG16')
 net = net.to(device)
+world_size = 0 if 'WORLD_SIZE' not in os.environ else int(os.environ['WORLD_SIZE'])
+assert 'MASTER_ADDR' in os.environ and 'MASTER_PORT' in os.environ
 
-is_ddp = 'WORLD_SIZE' in os.environ and int(os.environ['WORLD_SIZE']) > 1
+is_ddp = world_size > 1
 
 if is_ddp:
-    torch.cuda.set_device(args.local_rank)
     torch.distributed.init_process_group(backend='nccl', init_method='env://')
-    distributed_parallel_size = torch.distributed.get_world_size()
+    torch.cuda.set_device(args.local_rank)
+    net.cuda(args.local_rank)
     net = torch.nn.parallel.DistributedDataParallel(net, device_ids=[args.local_rank])
 
 elif device == 'cuda':
@@ -75,8 +77,12 @@ trainset = torchvision.datasets.CIFAR10(
     root='./data', train=True, download=True, transform=transform_train)
 if is_ddp:
     # Use distributed sampler
-    sampler = ResumableRandomSampler(len(trainset), 256 // distributed_parallel_size, False,
-                                     args.local_args, distributed_parallel_size)
+    sampler = ResumableRandomSampler(len(trainset),
+                                     256 // world_size,
+                                     False,
+                                     77,
+                                     args.local_rank,
+                                     world_size)
 else:
     sampler = ResumableRandomSampler(len(trainset), 256, False)
 trainloader = torch.utils.data.DataLoader(
@@ -149,7 +155,7 @@ latest_step = init(args.total_steps,
                 args.save_dir,
                 local_rank=args.local_rank)
 
-epoch = latest_step * 256 // len(trainset) + 1
+epoch = latest_step * (256 // world_size) // len(trainset) + 1
 
 for step in range(latest_step + 1, args.total_steps + 1):
     try:

@@ -99,6 +99,7 @@ def test_random_sampler_distributed(dataset: List[int]):
     assert len(sampled_data) == 9
     sampled_data.update(next(i2))
     assert len(sampled_data) == 10
+    assert max(sampled_data) == 9
 
     with pytest.raises(StopIteration):
         next(i)
