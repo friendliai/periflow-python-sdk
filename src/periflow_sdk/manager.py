@@ -181,6 +181,10 @@ class TrainingManager:
                     os.makedirs(os.path.dirname(checkpoint_path), exist_ok=True)
                     state_dict = self._state_dict_provider_fn(iteration, self._model, self._optimizer, self._lr_scheduler)
                     self._checkpoint_save_fn(state_dict, checkpoint_path)
+                    if self._is_local:
+                        with open(os.path.join(self._save_dir, "latest_checkpointed_iteration.txt"), "w") as iter_log:
+                            iter_log.write(str(iteration))
+                            os.fsync(iter_log.fileno())
                 if is_save_step:
                     save_type = SaveType.PERIODIC
                 elif self._emergency_save_step is not None and self._curr_step == self._emergency_save_step:
