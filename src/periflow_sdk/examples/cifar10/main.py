@@ -27,6 +27,7 @@ class CIFAR10TrainStepOutput(TrainStepOutput):
 parser = argparse.ArgumentParser(description='PyTorch CIFAR10 Training')
 parser.add_argument('--lr', default=0.1, type=float, help='learning rate')
 parser.add_argument('--total-steps', '-s', default=58800, type=int, help='The total number of training steps')
+parser.add_argument('--batch-size', '-b', default=256, type=int, help='The default batch size')
 parser.add_argument('--save-interval', '-i', default=500, type=int, help='The checkpoint save intervals')
 parser.add_argument('--save-dir', '-dir', default='save', type=str, help='The path to the save directory')
 parser.add_argument('--local_rank', '-r', default=0, type=int, help='The local rank of this process')
@@ -59,8 +60,6 @@ print('==> Building model..')
 net = VGG('VGG16')
 net = net.to(device)
 world_size = 0 if 'WORLD_SIZE' not in os.environ else int(os.environ['WORLD_SIZE'])
-assert 'MASTER_ADDR' in os.environ and 'MASTER_PORT' in os.environ
-
 is_ddp = world_size > 1
 
 if is_ddp:
@@ -78,13 +77,13 @@ trainset = torchvision.datasets.CIFAR10(
 if is_ddp:
     # Use distributed sampler
     sampler = ResumableRandomSampler(len(trainset),
-                                     256,
+                                     args.batch_size,
                                      False,
                                      77,
                                      args.local_rank,
                                      world_size)
 else:
-    sampler = ResumableRandomSampler(len(trainset), 256, False)
+    sampler = ResumableRandomSampler(len(trainset), args.batch_size, False)
 trainloader = torch.utils.data.DataLoader(
     trainset, batch_sampler=sampler, num_workers=4)
 
@@ -96,7 +95,7 @@ testloader = torch.utils.data.DataLoader(
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.SGD(net.parameters(), lr=args.lr,
                       momentum=0.9, weight_decay=5e-4)
-steps_per_epoch = math.ceil(50000 / 256)
+steps_per_epoch = math.ceil(len(trainset) / args.batch_size)
 scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer,
                                                  milestones=[100 * steps_per_epoch, 200 * steps_per_epoch],
                                                  gamma=0.1)
@@ -141,7 +140,6 @@ def test():
             correct += predicted.eq(targets).sum().item()
 
 
-# epoch = args.consumed_steps * 256 // len(trainset) + 1
 trainloader_iter = iter(trainloader)
 
 net.train()
@@ -155,7 +153,7 @@ latest_step = init(args.total_steps,
                 args.save_dir,
                 local_rank=args.local_rank)
 
-epoch = latest_step * 256 // len(trainset) + 1
+epoch = latest_step * args.batch_size // len(trainset) + 1
 
 for step in range(latest_step + 1, args.total_steps + 1):
     try:
