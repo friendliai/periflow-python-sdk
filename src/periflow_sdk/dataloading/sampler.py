@@ -9,27 +9,30 @@ class ResumableSequentialSampler:
     """
     def __init__(self,
                  samples_per_epoch: int,
-                 processed_steps: int,
                  batch_size: int,
                  drop_last: bool = False,
                  data_parallel_rank: int = 0,
                  data_parallel_size: int = 1):
         self._samples_per_epoch = samples_per_epoch
         self._batch_size = batch_size
-        steps_per_epoch = math.ceil(samples_per_epoch / batch_size)
-        self._consumed_samples = (processed_steps // steps_per_epoch) * samples_per_epoch + \
-            (processed_steps % steps_per_epoch) * batch_size
-        self._cur_index = self._consumed_samples % samples_per_epoch
         self._drop_last = drop_last
+        self._consumed_samples = 0
+        self._cur_index = 0
 
         assert batch_size % data_parallel_size == 0, "batch_size should be a multiple of data_parallel_size"
         assert samples_per_epoch % data_parallel_size == 0 or drop_last is True, \
-            "ResumableSampler does not support situation where" + \
-            "samples_per_epoch is not divisible by data_parallel_size and drop_last is not set" + \
-            "since it may cause undesirable sample duplicates."
+            "ResumableSampler does not support situation where " + \
+            "samples_per_epoch is not divisible by data_parallel_size and drop_last is not set " + \
+            "since it may cause undesirable sample duplicates. "
 
         self._data_parallel_rank = data_parallel_rank
         self._data_parallel_size = data_parallel_size
+
+    def set_processed_steps(self, processed_steps: int):
+        steps_per_epoch = math.ceil(self._samples_per_epoch / self._batch_size)
+        self._consumed_samples = (processed_steps // steps_per_epoch) * self._samples_per_epoch + \
+            (processed_steps % steps_per_epoch) * self._batch_size
+        self._cur_index = self._consumed_samples % self._samples_per_epoch
 
     def __len__(self):
         return self._samples_per_epoch
@@ -55,7 +58,6 @@ class ResumableRandomSampler:
     """
     def __init__(self,
                  samples_per_epoch: int,
-                 processed_steps: int,
                  batch_size: int,
                  drop_last: bool = False,
                  seed: int = 0,
@@ -63,9 +65,8 @@ class ResumableRandomSampler:
                  data_parallel_size: int = 1):
         self._samples_per_epoch = samples_per_epoch
         self._batch_size = batch_size
-        steps_per_epoch = math.ceil(samples_per_epoch / batch_size)
-        self._cur_epoch = processed_steps // steps_per_epoch
-        self._consumed_samples_cur_epoch = (processed_steps % steps_per_epoch) * batch_size
+        self._cur_epoch = 0
+        self._consumed_samples_cur_epoch = 0
         self._drop_last = drop_last
         self._seed = seed
 
@@ -77,6 +78,11 @@ class ResumableRandomSampler:
 
         self._data_parallel_rank = data_parallel_rank
         self._data_parallel_size = data_parallel_size
+
+    def set_processed_steps(self, processed_steps: int):
+        steps_per_epoch = math.ceil(self._samples_per_epoch / self._batch_size)
+        self._cur_epoch = processed_steps // steps_per_epoch
+        self._consumed_samples_cur_epoch = (processed_steps % steps_per_epoch) * self._batch_size
 
     def __len__(self):
         return self._samples_per_epoch

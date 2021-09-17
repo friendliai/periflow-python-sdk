@@ -13,7 +13,6 @@ def dataset():
 
 def test_sequential_sampler_normal(dataset: List[int]):
     sampler = ResumableSequentialSampler(samples_per_epoch=len(dataset),
-                                         processed_steps=0,
                                          batch_size=4,
                                          drop_last=False)
     
@@ -33,7 +32,6 @@ def test_sequential_sampler_normal(dataset: List[int]):
 
     # Test drop last
     sampler = ResumableSequentialSampler(samples_per_epoch=len(dataset),
-                                         processed_steps=0,
                                          batch_size=4,
                                          drop_last=True)
     i = iter(sampler)
@@ -46,7 +44,6 @@ def test_sequential_sampler_normal(dataset: List[int]):
 def test_random_sampler_normal(dataset: List[int]):
 
     sampler = ResumableRandomSampler(samples_per_epoch=len(dataset),
-                                     processed_steps=0,
                                      batch_size=4,
                                      drop_last=False)
     sampled_data = set()
@@ -73,7 +70,6 @@ def test_random_sampler_normal(dataset: List[int]):
 
     # Test drop last
     sampler = ResumableRandomSampler(samples_per_epoch=len(dataset),
-                                     processed_steps=0,
                                      batch_size=4,
                                      drop_last=True)
     sampled_data = set()
@@ -89,9 +85,10 @@ def test_random_sampler_normal(dataset: List[int]):
 
 def test_sequential_sampler_resume(dataset: List[int]):
     sampler = ResumableSequentialSampler(samples_per_epoch=len(dataset),
-                                         processed_steps=1,
                                          batch_size=4,
                                          drop_last=False)
+
+    sampler.set_processed_steps(1)
     
     # One batch (4 samples) is already processed
     i = iter(sampler)
@@ -109,10 +106,10 @@ def test_sequential_sampler_resume(dataset: List[int]):
 def test_random_sampler_resume(dataset: List[int]):
 
     sampler = ResumableRandomSampler(samples_per_epoch=len(dataset),
-                                     processed_steps=1,
                                      batch_size=4,
                                      drop_last=False,
                                      seed = 77)
+    sampler.set_processed_steps(1)
     sampled_data = set()
     i = iter(sampler)
     sampled_data.update(next(i))
@@ -124,10 +121,10 @@ def test_random_sampler_resume(dataset: List[int]):
         next(i)
 
     sampler2 = ResumableRandomSampler(samples_per_epoch=len(dataset),
-                                      processed_steps=2,
                                       batch_size=4,
                                       drop_last=False,
                                       seed = 77)
+    sampler2.set_processed_steps(2)
     sampled_data = set()
     i2 = iter(sampler2)
     new_third_batch = next(i2)

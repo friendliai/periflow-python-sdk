@@ -14,14 +14,12 @@ def dataset():
 def test_sequential_sampler_distributed(dataset: List[int]):
 
     sampler = ResumableSequentialSampler(samples_per_epoch=len(dataset),
-                                         processed_steps=0,
                                          batch_size=4,
                                          drop_last=False,
                                          data_parallel_rank = 0,
                                          data_parallel_size = 2)
 
     sampler2 = ResumableSequentialSampler(samples_per_epoch=len(dataset),
-                                          processed_steps=0,
                                           batch_size=4,
                                           drop_last=False,
                                           data_parallel_rank = 1,
@@ -44,22 +42,22 @@ def test_sequential_sampler_distributed(dataset: List[int]):
 
     # Resume a sampler
     sampler3 = ResumableSequentialSampler(samples_per_epoch=len(dataset),
-                                          processed_steps=1,
                                           batch_size=4,
                                           drop_last=False,
                                           data_parallel_rank = 0,
                                           data_parallel_size = 2)
+    sampler3.set_processed_steps(1)
     i3 = iter(sampler3)
     assert next(i3) == dataset[4:6]
     assert next(i3) == dataset[8:9]
 
     # Resume a sampler after some epochs
     sampler4 = ResumableSequentialSampler(samples_per_epoch=len(dataset),
-                                          processed_steps=7,
                                           batch_size=4,
                                           drop_last=False,
                                           data_parallel_rank = 0,
                                           data_parallel_size = 2)
+    sampler4.set_processed_steps(7)
 
     i4 = iter(sampler4)
     assert next(i4) == dataset[4:6]
@@ -69,7 +67,6 @@ def test_sequential_sampler_distributed(dataset: List[int]):
 def test_random_sampler_distributed(dataset: List[int]):
 
     sampler = ResumableRandomSampler(samples_per_epoch=len(dataset),
-                                     processed_steps=0,
                                      batch_size=4,
                                      drop_last=False,
                                      seed = 77,
@@ -77,7 +74,6 @@ def test_random_sampler_distributed(dataset: List[int]):
                                      data_parallel_size = 2)
 
     sampler2 = ResumableRandomSampler(samples_per_epoch=len(dataset),
-                                     processed_steps=0,
                                      batch_size=4,
                                      drop_last=False,
                                      seed = 77,
@@ -112,12 +108,12 @@ def test_random_sampler_distributed(dataset: List[int]):
 
     # Resume a sampler
     sampler3 = ResumableRandomSampler(samples_per_epoch=len(dataset),
-                                      processed_steps=1,
                                       batch_size=4,
                                       drop_last=False,
                                       seed = 77,
                                       data_parallel_rank = 0,
                                       data_parallel_size = 2)
+    sampler3.set_processed_steps(1)
     i3 = iter(sampler3)
     resumed_second_local_batch = next(i3)
     resumed_third_local_batch = next(i3)
@@ -132,12 +128,12 @@ def test_random_sampler_distributed(dataset: List[int]):
     sixth_local_batch = next(i)
 
     sampler4 = ResumableRandomSampler(samples_per_epoch=len(dataset),
-                                      processed_steps=4,
                                       batch_size=4,
                                       drop_last=False,
                                       seed = 77,
                                       data_parallel_rank = 0,
                                       data_parallel_size = 2)
+    sampler4.set_processed_steps(4)
     i4 = iter(sampler4)
     resumed_fifth_local_batch = next(i4)
     resumed_sixth_local_batch = next(i4)
