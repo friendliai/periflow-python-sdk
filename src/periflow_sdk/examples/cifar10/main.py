@@ -78,7 +78,7 @@ trainset = torchvision.datasets.CIFAR10(
 if is_ddp:
     # Use distributed sampler
     sampler = ResumableRandomSampler(len(trainset),
-                                     256 // world_size,
+                                     256,
                                      False,
                                      77,
                                      args.local_rank,
@@ -155,7 +155,7 @@ latest_step = init(args.total_steps,
                 args.save_dir,
                 local_rank=args.local_rank)
 
-epoch = latest_step * (256 // world_size) // len(trainset) + 1
+epoch = latest_step * 256 // len(trainset) + 1
 
 for step in range(latest_step + 1, args.total_steps + 1):
     try:
@@ -177,7 +177,4 @@ for step in range(latest_step + 1, args.total_steps + 1):
     # Actual training function
     train_batch(inputs=inputs,
                 targets=targets,
-                iteration=step,
-                model=net,
-                optimizer=optimizer,
-                lr_scheduler=scheduler)
+                iteration=step)

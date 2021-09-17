@@ -164,18 +164,9 @@ class TrainingManager:
         """
         @functools.wraps(train_batch_fn)
         def wrapper(*args, **kwargs):
-            assert 'iteration' in kwargs and 'model' in kwargs
-            iteration = kwargs.get('iteration', None)
-            model = kwargs.get('model', None)
-            optimizer = kwargs.get('optimizer', None)
-            lr_scheduler = kwargs.get('lr_scheduler', None)
-
-            assert model is self._model, "Model in training function should be the same as the one used in init"
-            assert optimizer is self._optimizer, "Optimizer in training function should be the same as the one used in init"
-            assert lr_scheduler is self._lr_scheduler, "LR Scheduler in training function should be the same as the one used in init"
-
             start_time = time.time()
-            step_output = train_batch_fn(*args, **kwargs)
+            iteration = kwargs['iteration']
+            step_output = train_batch_fn(*args, model=self._model, optimizer=self._optimizer, lr_scheduler=self._lr_scheduler, **kwargs)
             end_time = time.time()
 
             self._curr_step = step_output.iteration
@@ -188,7 +179,7 @@ class TrainingManager:
                 # Checkpointing is done only when the local rank is zero.
                 if self._local_rank == 0:
                     os.makedirs(os.path.dirname(checkpoint_path), exist_ok=True)
-                    state_dict = self._state_dict_provider_fn(iteration, model, optimizer, lr_scheduler)
+                    state_dict = self._state_dict_provider_fn(iteration, self._model, self._optimizer, self._lr_scheduler)
                     self._checkpoint_save_fn(state_dict, checkpoint_path)
                 if is_save_step:
                     save_type = SaveType.PERIODIC
