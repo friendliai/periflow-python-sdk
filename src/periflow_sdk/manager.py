@@ -166,6 +166,10 @@ class TrainingManager:
             self._emergency_save_step = msg['emergency_save_step']
 
 
+    def set_current_iteration(self, step: int):
+        self._cur_iter = step
+
+
     def ft_train_batch(self, train_batch_fn: Callable[..., TrainStepOutput]):
         """ Decorator function for training batch function to support automatic checkpoint save.
         """
@@ -242,3 +246,4 @@ init = ft_train_manager.init
 periflow_trainer = ft_train_manager.ft_train_batch
 add_modules_and_recover = ft_train_manager.add_modules_and_recover
 recover_samplers = ft_train_manager.recover_samplers
+set_current_iteration = ft_train_manager.set_current_iteration
