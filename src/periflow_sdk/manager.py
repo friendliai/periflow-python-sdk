@@ -35,7 +35,6 @@ class TrainStepOutput:
     """ The base output class of a training step.
     Users are encouraged to add statistics to this class, so that Periflow can automatically log necessary data.
     """
-    iteration: int
 
 
 class TrainingManager:
@@ -86,7 +85,6 @@ class TrainingManager:
         assert os.path.isdir(save_dir), "The save directory already exists and it is not a directory!"
         self._checkpoint_save_fn = checkpoint_save_fn
         self._state_dict_provider_fn = state_dict_provider_fn
-        self._curr_step = 0
         self._emergency_save_step = None
         self._log_file = open(os.path.join(save_dir, "periflow_trainer.log"), "w")
         self._local_rank = local_rank
@@ -129,6 +127,8 @@ class TrainingManager:
             assert hasattr(sampler, "set_processed_steps"), "Sampler should be one of 'ResumableRandomSampler' or 'ResumableSequentialSasmpler'!"
             sampler.set_processed_steps(latest_iter)
 
+        self._cur_iter = latest_iter
+
         # teardown will be called at exit of the program.
         atexit.register(self.teardown)
         return latest_iter
@@ -165,29 +165,28 @@ class TrainingManager:
         @functools.wraps(train_batch_fn)
         def wrapper(*args, **kwargs):
             start_time = time.time()
-            iteration = kwargs['iteration']
-            step_output = train_batch_fn(*args, model=self._model, optimizer=self._optimizer, lr_scheduler=self._lr_scheduler, **kwargs)
+            self._cur_iter += 1
+            step_output = train_batch_fn(*args, **kwargs)
             end_time = time.time()
 
-            self._curr_step = step_output.iteration
             step_time = end_time - start_time
 
-            is_save_step = self._curr_step % self._save_interval == 0
+            is_save_step = self._cur_iter % self._save_interval == 0
 
-            if is_save_step or self._curr_step == self._emergency_save_step:
-                checkpoint_path = os.path.join(self._save_dir, get_checkpoint_name(iteration))
+            if is_save_step or self._cur_iter == self._emergency_save_step:
+                checkpoint_path = os.path.join(self._save_dir, get_checkpoint_name(self._cur_iter))
                 # Checkpointing is done only when the local rank is zero.
                 if self._local_rank == 0:
                     os.makedirs(os.path.dirname(checkpoint_path), exist_ok=True)
-                    state_dict = self._state_dict_provider_fn(iteration, self._model, self._optimizer, self._lr_scheduler)
+                    state_dict = self._state_dict_provider_fn(self._cur_iter, self._model, self._optimizer, self._lr_scheduler)
                     self._checkpoint_save_fn(state_dict, checkpoint_path)
                     if self._is_local:
                         with open(os.path.join(self._save_dir, "latest_checkpointed_iteration.txt"), "w") as iter_log:
-                            iter_log.write(str(iteration))
+                            iter_log.write(str(self._cur_iter))
                             os.fsync(iter_log.fileno())
                 if is_save_step:
                     save_type = SaveType.PERIODIC
-                elif self._emergency_save_step is not None and self._curr_step == self._emergency_save_step:
+                elif self._emergency_save_step is not None and self._cur_iter == self._emergency_save_step:
                     save_type = SaveType.EMERGENCY
             else:
                 checkpoint_path= None
@@ -201,10 +200,10 @@ class TrainingManager:
                 try:
                     # Write training stat of the current rank to FTModule via IPC channel.
                     msg = {
-                        "step": self._curr_step,
+                        "step": self._cur_iter,
                         "saved": is_save_step,
                         "save_type": save_type,
-                        "is_last_step": self._curr_step == self._total_train_steps,
+                        "is_last_step": self._cur_iter == self._total_train_steps,
                         "checkpoint_path": checkpoint_path,
                         "step_time": step_time
                     }

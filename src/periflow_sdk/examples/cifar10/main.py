@@ -20,6 +20,7 @@ from periflow_sdk.dataloading.sampler import ResumableRandomSampler
 
 @dataclass
 class CIFAR10TrainStepOutput(TrainStepOutput):
+    iteration: int
     training_loss: float
     learning_rate: float
 
@@ -175,4 +176,7 @@ for step in range(latest_step + 1, args.total_steps + 1):
     # Actual training function
     train_batch(inputs=inputs,
                 targets=targets,
-                iteration=step)
+                iteration=step,
+                model=net,
+                optimizer=optimizer,
+                lr_scheduler=scheduler)
