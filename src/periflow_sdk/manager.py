@@ -238,7 +238,7 @@ class TrainingManager:
                     raise RuntimeError("IPC connection between training manager and FTModule is broken.") \
                          from ipc_connection_failure
 
-        return wrapper
+            return step_output
 
 
 ft_train_manager = TrainingManager()
