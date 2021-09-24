@@ -239,6 +239,7 @@ class TrainingManager:
                          from ipc_connection_failure
 
             return step_output
+        return wrapper
 
 
 ft_train_manager = TrainingManager()
