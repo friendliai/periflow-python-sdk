@@ -37,7 +37,7 @@ from periflow_sdk.manager import periflow_logger
 
 
 # Integrations must be imported before ML frameworks:
-from .integrations import (  # isort: split
+from transformers.integrations import (  # isort: split
     default_hp_search_backend,
     get_reporting_integration_callbacks,
     hp_params,
@@ -55,13 +55,13 @@ from torch import nn
 from torch.utils.data import DataLoader, Dataset, IterableDataset, RandomSampler, SequentialSampler
 from torch.utils.data.distributed import DistributedSampler
 
-from . import __version__
-from .configuration_utils import PretrainedConfig
-from .data.data_collator import DataCollator, DataCollatorWithPadding, default_data_collator
-from .debug_utils import DebugOption, DebugUnderflowOverflow
-from .deepspeed import deepspeed_init, is_deepspeed_zero3_enabled
-from .dependency_versions_check import dep_version_check
-from .file_utils import (
+from transformers import __version__
+from transformers.configuration_utils import PretrainedConfig
+from transformers.data.data_collator import DataCollator, DataCollatorWithPadding, default_data_collator
+from transformers.debug_utils import DebugOption, DebugUnderflowOverflow
+from transformers.deepspeed import deepspeed_init, is_deepspeed_zero3_enabled
+from transformers.dependency_versions_check import dep_version_check
+from transformers.file_utils import (
     CONFIG_NAME,
     WEIGHTS_NAME,
     PushToHubMixin,
@@ -72,12 +72,12 @@ from .file_utils import (
     is_sagemaker_mp_enabled,
     is_torch_tpu_available,
 )
-from .modelcard import TrainingSummary
-from .modeling_utils import PreTrainedModel, unwrap_model
-from .models.auto.modeling_auto import MODEL_FOR_QUESTION_ANSWERING_MAPPING_NAMES
-from .optimization import Adafactor, AdamW, get_scheduler
-from .tokenization_utils_base import PreTrainedTokenizerBase
-from .trainer_callback import (
+from transformers.modelcard import TrainingSummary
+from transformers.modeling_utils import PreTrainedModel, unwrap_model
+from transformers.models.auto.modeling_auto import MODEL_FOR_QUESTION_ANSWERING_MAPPING_NAMES
+from transformers.optimization import Adafactor, AdamW, get_scheduler
+from transformers.tokenization_utils_base import PreTrainedTokenizerBase
+from transformers.trainer_callback import (
     CallbackHandler,
     DefaultFlowCallback,
     PrinterCallback,
@@ -86,7 +86,7 @@ from .trainer_callback import (
     TrainerControl,
     TrainerState,
 )
-from .trainer_pt_utils import (
+from transformers.trainer_pt_utils import (
     DistributedLengthGroupedSampler,
     DistributedSamplerWithLoop,
     DistributedTensorGatherer,
@@ -106,7 +106,7 @@ from .trainer_pt_utils import (
     nested_xla_mesh_reduce,
     reissue_pt_warnings,
 )
-from .trainer_utils import (
+from transformers.trainer_utils import (
     PREFIX_CHECKPOINT_DIR,
     BestRun,
     EvalLoopOutput,
@@ -125,8 +125,8 @@ from .trainer_utils import (
     speed_metrics,
     IntervalStrategy,
 )
-from .training_args import ParallelMode, TrainingArguments
-from .utils import logging
+from transformers.training_args import ParallelMode, TrainingArguments
+from transformers.utils import logging
 
 
 _is_torch_generator_available = False
@@ -136,7 +136,7 @@ DEFAULT_CALLBACKS = [DefaultFlowCallback]
 DEFAULT_PROGRESS_CALLBACK = ProgressCallback
 
 if is_in_notebook():
-    from .utils.notebook import NotebookProgressCallback
+    from transformers.utils.notebook import NotebookProgressCallback
 
     DEFAULT_PROGRESS_CALLBACK = NotebookProgressCallback
 
@@ -174,7 +174,7 @@ else:
 if is_sagemaker_mp_enabled():
     import smdistributed.modelparallel.torch as smp
 
-    from .trainer_pt_utils import smp_forward_backward, smp_forward_only, smp_gather, smp_nested_concat
+    from transformers.trainer_pt_utils import smp_forward_backward, smp_forward_only, smp_gather, smp_nested_concat
 
 
 if TYPE_CHECKING:
@@ -262,7 +262,7 @@ class Trainer:
 
     """
 
-    from .trainer_pt_utils import _get_learning_rate, log_metrics, metrics_format, save_metrics, save_state
+    from transformers.trainer_pt_utils import _get_learning_rate, log_metrics, metrics_format, save_metrics, save_state
 
     def __init__(
         self,

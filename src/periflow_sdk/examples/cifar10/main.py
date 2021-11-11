@@ -1,20 +1,19 @@
 '''Train CIFAR10 with PyTorch.'''
+import os
+import argparse
+import math
 from dataclasses import dataclass
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 import torch.backends.cudnn as cudnn
-
 import torchvision
 import torchvision.transforms as transforms
-
-import os
-import argparse
-import math
+import wandb
 
 from models import *
-
 from periflow_sdk.manager import TrainStepOutput, init, periflow_trainer, add_modules_and_recover, recover_samplers
 from periflow_sdk.dataloading.sampler import ResumableRandomSampler
 
@@ -33,11 +32,18 @@ parser.add_argument('--save-interval', '-i', default=500, type=int, help='The ch
 parser.add_argument('--save-dir', '-dir', default='save', type=str, help='The path to the save directory')
 parser.add_argument('--local_rank', '-r', default=0, type=int, help='The local rank of this process')
 parser.add_argument('--seed', default=777, type=int, help='The seed for random generator')
+parser.add_argument('--wandb-project', default='cifar-10-example', type=str, help='The name of the wandb project')
+parser.add_argument('--wandb-entity', default=None, type=str, help='An entity is a wandb username or team name')
 args = parser.parse_args()
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 best_acc = 0  # best test accuracy
 #start_epoch = 0  # start from epoch 0 or last checkpoint epoch
+
+if args.wandb_entity is not None:
+    wandb.init(project='cifar-10-example', entity=args.wandb_entity)
+    config = wandb.config
+    config.learning_rate = args.lr
 
 # Data
 print('==> Preparing data..')
@@ -117,6 +123,9 @@ def train_batch(inputs,
     optimizer.step()
     lr_scheduler.step()
 
+    # Log loss
+    wandb.log({"loss": loss})
+
     # Automatically logged.
     return CIFAR10TrainStepOutput(iteration=iteration,
                                   training_loss=loss.item(),
@@ -157,6 +166,8 @@ add_modules_and_recover({
 recover_samplers([sampler])
 
 epoch = latest_step * args.batch_size // len(trainset) + 1
+
+wandb.watch(net)
 
 for step in range(latest_step + 1, args.total_steps + 1):
     try:
