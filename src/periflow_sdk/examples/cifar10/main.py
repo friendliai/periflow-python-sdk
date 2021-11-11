@@ -68,13 +68,12 @@ if is_ddp:
     torch.cuda.set_device(args.local_rank)
     net.cuda(args.local_rank)
     net = torch.nn.parallel.DistributedDataParallel(net, device_ids=[args.local_rank])
+    is_download = args.local_rank
 
 elif device == 'cuda':
     net = torch.nn.DataParallel(net)
     cudnn.benchmark = True
 
-trainset = torchvision.datasets.CIFAR10(
-    root='./data', train=True, download=True, transform=transform_train)
 if is_ddp:
     # Use distributed sampler
     sampler = ResumableRandomSampler(len(trainset),
@@ -83,8 +82,14 @@ if is_ddp:
                                      77,
                                      args.local_rank,
                                      world_size)
+    download = args.local_rank == 0
 else:
     sampler = ResumableRandomSampler(len(trainset), args.batch_size, False)
+    download = True
+
+trainset = torchvision.datasets.CIFAR10(
+    root='./data', train=True, download=download, transform=transform_train)
+
 trainloader = torch.utils.data.DataLoader(
     trainset, batch_sampler=sampler, num_workers=4)
 
