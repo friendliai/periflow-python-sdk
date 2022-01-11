@@ -6,7 +6,7 @@ from typing import Dict
 
 import numpy as np
 import torch
-from periflow_sdk.checkpoint.utils import ensure_director, to_cpu
+from periflow_sdk.checkpoint.utils import ensure_directory_exists, to_cpu
 
 
 def sync_checkpoint_save(iteration: int,
