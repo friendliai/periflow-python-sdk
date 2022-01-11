@@ -226,7 +226,7 @@ class TrainingManager:
                     with open(os.path.join(self._save_dir, "latest_checkpointed_iteration.txt"),
                               "w", encoding="utf-8") as iter_log:
                         iter_log.write(str(self._cur_iter))
-                        os.fsync(iter_lod)
+                        os.fsync(iter_log)
 
                 save_type = None
                 if is_save_step:
