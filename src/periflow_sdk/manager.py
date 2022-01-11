@@ -9,7 +9,7 @@ import functools
 import time
 import sys
 from threading import Thread
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable, List, Optional
 import logging
 
 from periflow_sdk.checkpoint.checkpoint_func import sync_checkpoint_save, sync_checkpoint_load
