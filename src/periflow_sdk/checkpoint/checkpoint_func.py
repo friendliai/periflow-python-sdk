@@ -38,12 +38,13 @@ def sync_checkpoint_save(iteration: int,
 
 
 def sync_checkpoint_load(checkpoint_name: str,
-                         model,
+                         model=None,
                          optimizer=None,
                          lr_scheduler=None):
     state_dict = torch.load(checkpoint_name, map_location='cpu')
 
-    model.load_state_dict(state_dict['model'])
+    if model is not None:
+        model.load_state_dict(state_dict['model'])
     if optimizer is not None:
         model.load_state_dict(state_dict['optimizer'])
     if lr_scheduler is not None:

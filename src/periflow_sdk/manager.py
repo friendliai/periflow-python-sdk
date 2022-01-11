@@ -9,7 +9,7 @@ import functools
 import time
 import sys
 from threading import Thread
-from typing import Any, Callable, Dict, List, Tuple
+from typing import Any, Callable, Dict, List
 import logging
 
 from periflow_sdk.checkpoint.checkpoint_func import sync_checkpoint_save, sync_checkpoint_load
@@ -77,18 +77,26 @@ class TrainingManager:
              pp_rank: int = 0,
              dp_rank: int = 0,
              mp_rank: int = 0,
-             # below arguments could be added (if there exists sth to save)
-             # below arguments do not have to be a single object (e.g., collection of model, optimizer is possible)
+             # state containers
              model = None,
              optimizer = None,
-             lr_scheduler = None):
+             lr_scheduler = None) -> int:
         """ Initialize training manager and perform automatic recovery in case that periflow is deployed.
 
         Arguments:
             - total_train_steps: The number of total training steps.
             - save_interval: The interval step of checkpoint saving. 0 for no checkpointing.
-            - checkpoint_save_fn: The function to save model checkpoint. The function should return the name of
-                                  checkpoint file.
+            - save_dir: checkpoint directory root for saving.
+            - load_dir: checkpoint directory root for loading.
+            - checkpoint_save_fn: The function to save model checkpoint.
+            - checkpoint_load_fn: The function to load model checkpoint.
+            - local_rank / pp_rank / dp_rank / mp_rank: distributed training config
+            - model: DL Model (could be a single nn.Module, collection of separate models)
+            - optimizer: Training optimizer (could be collectioN)
+            - lr_scheduler: learning rate scheduler (could be collection)
+
+        Returns:
+            - latest training iteration
         """
         self._total_train_steps = total_train_steps
 
@@ -145,8 +153,8 @@ class TrainingManager:
                 with open(latest_ckpt_file_path, "r", encoding="utf-8") as f:
                     latest_iter = int(f.readline().strip())
             except FileNotFoundError:
-                periflow_logger.info(f"Cannot find latest checkpointed iteration from the {self._load_dir}! "
-                                     "Start from 0...")
+                periflow_logger.error(f"Cannot find latest checkpointed iteration from the {self._load_dir}! "
+                                      "Start from 0...")
 
         if latest_iter > 0:
             checkpoint_name = self._dist_option.checkpoint_name(latest_iter)
