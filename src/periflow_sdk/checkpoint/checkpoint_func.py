@@ -1,16 +1,53 @@
 """ The module for checkpoint functions.
 """
 import os
+import random
 from typing import Dict
 
+import numpy as np
 import torch
-from .utils import ensure_directory_exists, to_cpu
+from periflow_sdk.checkpoint.utils import ensure_director, to_cpu
 
 
-def sync_checkpoint_func(state_dict: Dict, ckpt_path: str):
-    """ The synchronous checkpoint function.
-    """
-    persist_checkpoint(state_dict, ckpt_path)
+def sync_checkpoint_save(iteration: int,
+                         checkpoint_name: str,
+                         model=None,
+                         optimizer=None,
+                         lr_scheduler=None):
+    # default checkpoint function assumes single model, single optimizer, single lr_scheduler
+    state_dict = {}
+    state_dict['iteration'] = iteration
+    if model is not None:
+        state_dict['model'] = model.state_dict()
+    if optimzier is not None:
+        state_dict['optimizer'] = optimizer.state_dict()
+    if lr_scheduler is not None:
+        state_dict['lr_scheduler'] = lr_scheduler.state_dict()
+
+    ensure_directory_exists(checkpoint_name)
+    torch.save(state_dict, checkpoint_name)
+
+    # ensure persistence
+    with open(checkpoint_name, 'a+') as f:
+        os.fsync(f)
+
+    # log finish file
+    with open(checkpoint_name[:-18] + "_complete.log", "w") as log_f:
+        log_f.write("success\n")
+        os.fsync(log_f)
+
+
+def sync_checkpoint_load(checkpoint_name: str,
+                         model,
+                         optimizer=None,
+                         lr_scheduler=None):
+    state_dict = torch.load(checkpoint_name, map_location='cpu')
+
+    model.load_state_dict(state_dict['model'])
+    if optimizer is not None:
+        model.load_state_dict(state_dict['optimizer'])
+    if lr_scheduler is not None:
+        model.load_state_dict(state_dict['lr_scheduler'])
 
 
 def save_cpu_memory(state_dict: Dict):
@@ -21,20 +58,3 @@ def save_cpu_memory(state_dict: Dict):
         snapshot[name] = to_cpu(ref)
 
     return snapshot
-
-
-def persist_checkpoint(snapshot: Dict, ckpt_path: str):
-    """ Persist checkpoints in CPU memory to disks.
-    """
-
-    ensure_directory_exists(ckpt_path)
-    torch.save(snapshot, ckpt_path)
-
-    # Ensure it's persisted
-    with open(ckpt_path, 'a+') as f:
-        os.fsync(f.fileno())
-
-    # Log finish file
-    with open(ckpt_path + "_complete.log", "w") as log_f:
-        log_f.write("success\n")
-        os.fsync(log_f.fileno())
