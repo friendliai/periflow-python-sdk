@@ -32,8 +32,8 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Un
 
 from tqdm.auto import tqdm
 
-from periflow_sdk.manager import TrainStepOutput, periflow_trainer, add_modules_and_recover, set_current_iteration, init
-from periflow_sdk.manager import periflow_logger
+from periflow_sdk.periflow import TrainStepOutput, periflow_trainer, add_modules_and_recover, set_current_iteration, init
+from periflow_sdk.periflow import periflow_logger
 
 
 # Integrations must be imported before ML frameworks:

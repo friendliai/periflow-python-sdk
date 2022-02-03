@@ -29,9 +29,10 @@ class CommResultStatus(str, Enum):
 
 
 class IpcCommPurpose(str, Enum):
-    STAT = "STAT"
+    STEP_INFO = "STEP_INFO"
     ACK = "ACK"
     EMERGENCY_SAVE = "EMERGENCY_SAVE"
+    METRIC = "METRIC"
 
 
 class FifoBase:
@@ -72,7 +73,6 @@ class FifoReader(FifoBase):
         # Read-only and non-blocking
         return os.O_RDONLY | os.O_NONBLOCK
 
-    def read(self, timeout: Optional[float] = None) -> Optional[bytes]:
         """ Read a message from the FIFO.
         If timeout is given, it specifies the length of time in milliseconds which the system will wait for events
         before returning. If timeout is omitted, negative, or None, the call will block until there is an event for the
@@ -308,12 +308,14 @@ def _try_mkfifo(fifoname: str):
 def get_default_ipc_channel(purpose: IpcCommPurpose, local_rank: int) -> IpcChannel:
     """ Create and return a IPC channel by the purpose.
     """
-    if purpose == IpcCommPurpose.STAT:
-        fifoname = f"/tmp/periflow_stat_ipc_fifo_{local_rank}"
+    if purpose == IpcCommPurpose.STEP_INFO:
+        fifoname = f"/tmp/periflow_step_info_ipc_fifo_{local_rank}"
     elif purpose == IpcCommPurpose.ACK:
         fifoname = f"/tmp/periflow_ack_ipc_fifo_{local_rank}"
     elif purpose == IpcCommPurpose.EMERGENCY_SAVE:
         fifoname = f"/tmp/periflow_emergency_save_ipc_fifo_{local_rank}"
+    elif purpose == IpcCommPurpose.METRIC:
+        fifoname = f"/tmp/periflow_metric_ipc_fifo_{local_rank}"
     else:
         raise ValueError(f"Invalid purpose ({purpose}) is provided")
     return IpcChannel(fifoname, local_rank)

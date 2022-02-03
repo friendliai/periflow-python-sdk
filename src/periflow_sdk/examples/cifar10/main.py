@@ -15,7 +15,7 @@ import math
 
 from models import *
 
-from periflow_sdk.manager import TrainStepOutput, init, periflow_trainer, add_modules_and_recover, recover_samplers
+from periflow_sdk.periflow import TrainStepOutput, init, periflow_trainer, add_modules_and_recover, recover_samplers
 from periflow_sdk.dataloading.sampler import ResumableRandomSampler
 
 @dataclass
