@@ -5,16 +5,19 @@ import os
 import time
 import json
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
+from pathlib import Path
 from typing import Dict
 
 import pytest
-from periflow_sdk.periflow import TrainingManager
+import torch
+from periflow_sdk import TrainingManager, SaveType
 from periflow_sdk.comm.ipc import get_default_ipc_channel, IpcCommPurpose, IpcChannel, CommResultStatus
 
 TOTAL_TRAIN_STEPS = 5
 LOCAL_RANK = 0
 ANOTHER_LOCAL_RANK = 1
 LOG_FILE_NAME = "./temp_log_txt"
+CKPT_PATH = "./ckpt.pt"
 
 
 @pytest.fixture
@@ -121,6 +124,36 @@ def test_step_multi_ranks(cloud_manager, cloud_manager_v2):
 
     cloud_manager._teardown()
     cloud_manager_v2._teardown()
+
+
+def test_save(cloud_manager):
+    server_step_channel = get_default_ipc_channel(purpose=IpcCommPurpose.STEP_INFO,
+                                                  local_rank=LOCAL_RANK)
+    server_ack_channel = get_default_ipc_channel(purpose=IpcCommPurpose.ACK,
+                                                 local_rank=LOCAL_RANK)
+    server_step_channel.open()
+    server_ack_channel.open()
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        f = executor.submit(_send_ack_on_receive, server_step_channel, server_ack_channel)
+        cloud_manager.start_step()
+        time.sleep(0.1)
+        obj = {"Hello": 1.0}
+        cloud_manager.save(obj, CKPT_PATH)
+        cloud_manager.end_step()
+        stat_info_msg = f.result()
+        assert _valid_step_info(stat_info_msg)
+        assert stat_info_msg["saved"]
+        assert stat_info_msg["save_type"] == SaveType.NORMAL
+        assert stat_info_msg["checkpoint_path"] == str(Path(CKPT_PATH).resolve())
+
+    read_obj = torch.load(CKPT_PATH)
+    assert read_obj == obj
+
+    server_step_channel.close()
+    server_ack_channel.close()
+    cloud_manager._teardown()
+    os.unlink(CKPT_PATH)
 
 
 def test_cloud_log(cloud_manager):
