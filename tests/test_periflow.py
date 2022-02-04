@@ -23,26 +23,26 @@ CKPT_PATH = "./ckpt.pt"
 @pytest.fixture
 def local_manager():
     manager = TrainingManager(log_file_name=LOG_FILE_NAME, is_local=True, teardown_at_exit=False)
-    manager.init(TOTAL_TRAIN_STEPS, LOCAL_RANK)
+    manager.init(total_train_steps=TOTAL_TRAIN_STEPS, local_rank=LOCAL_RANK)
     return manager
 
 
 @pytest.fixture
 def cloud_manager():
     manager = TrainingManager(is_local=False, teardown_at_exit=False)
-    manager.init(TOTAL_TRAIN_STEPS, LOCAL_RANK)
+    manager.init(total_train_steps=TOTAL_TRAIN_STEPS, local_rank=LOCAL_RANK)
     return manager
 
 
 @pytest.fixture
 def cloud_manager_v2():
     manager = TrainingManager(is_local=False, teardown_at_exit=False)
-    manager.init(TOTAL_TRAIN_STEPS, ANOTHER_LOCAL_RANK)
+    manager.init(total_train_steps=TOTAL_TRAIN_STEPS, local_rank=ANOTHER_LOCAL_RANK)
     return manager
 
 
 def _send_ack_on_receive(step_info_channel: IpcChannel, ack_channel: IpcChannel):
-    msg = step_info_channel.read(timeout=1000)
+    msg = step_info_channel.read(timeout=5000)
     ack_channel.write(msg={"status": CommResultStatus.SUCCESS})
     return msg
 
@@ -104,16 +104,16 @@ def test_step_multi_ranks(cloud_manager, cloud_manager_v2):
     server_step_channel_2.open()
     server_ack_channel_2.open()
 
-    with ThreadPoolExecutor(max_workers=1) as executor:
+    with ThreadPoolExecutor(max_workers=2) as executor:
         cloud_manager.start_step()
         cloud_manager_v2.start_step()
         executor.submit(_send_ack_on_receive, server_step_channel, server_ack_channel)
-        time.sleep(0.1)
+        time.sleep(1)
         cloud_manager.end_step()
         assert not cloud_manager._is_step_started
         assert cloud_manager_v2._is_step_started
         executor.submit(_send_ack_on_receive, server_step_channel_2, server_ack_channel_2)
-        time.sleep(0.1)
+        time.sleep(1)
         cloud_manager_v2.end_step()
         assert not cloud_manager_v2._is_step_started
 
