@@ -12,6 +12,7 @@ from typing import Callable, Dict, List
 import logging
 from pathlib import Path
 import json
+from contextlib import contextmanager
 
 import torch
 from periflow_sdk.comm.ipc import IpcCommPurpose, CommResultStatus, get_default_ipc_channel
@@ -60,6 +61,7 @@ class TrainingManager:
 
     def init(self,
              total_train_steps: int,
+             processed_steps: int = 0,
              local_rank: int = 0):
         """ Initialize training manager.
 
@@ -68,6 +70,7 @@ class TrainingManager:
             - local_rank: The local rank of this training process
         """
         self._total_train_steps = total_train_steps
+        self._cur_step = processed_steps
         self._local_rank = local_rank
 
         if self._is_local:
@@ -130,33 +133,42 @@ class TrainingManager:
     def end_step(self):
         assert self._is_step_started, "Existing steps must start before calling end_step()!"
         step_time = time.time() - self._step_start_time
+        if not self._is_local:
+            try:
+                msg = {
+                    "step": self._cur_step,
+                    "is_last_step": self._cur_step == self._total_train_steps,
+                    "step_time": step_time,
+                    "saved": self._is_saved,
+                    "save_type": self._save_method,
+                    "checkpoint_path": self._checkpoint_path
+                }
+                periflow_logger.debug(f"IPC WR || send training stat: {msg}")
+                self._step_info_ipc_channel.write(msg)
+
+                # Wait for ack.
+                periflow_logger.debug("Wait for ACK.")
+                ack = self._ack_ipc_channel.read(timeout=None)
+                periflow_logger.debug("ACK received.")
+                if ack["status"] != CommResultStatus.SUCCESS:
+                    raise RuntimeError(f"Invalid IPC message from FTModule: {ack}")
+
+                # If emergency save is done, terminate the training process.
+                if self._is_saved and self._save_method is SaveType.EMERGENCY:
+                    sys.exit()
+
+            except IpcConnectionFailureException as ipc_connection_failure:
+                raise RuntimeError("IPC connection between training manager and FTModule is broken.") \
+                    from ipc_connection_failure
+        self._is_step_started = False
+
+    @contextmanager
+    def train_step(self):
         try:
-            msg = {
-                "step": self._cur_step,
-                "is_last_step": self._cur_step == self._total_train_steps,
-                "step_time": step_time,
-                "saved": self._is_saved,
-                "save_type": self._save_method,
-                "checkpoint_path": self._checkpoint_path
-            }
-            periflow_logger.debug(f"IPC WR || send training stat: {msg}")
-            self._step_info_ipc_channel.write(msg)
-
-            # Wait for ack.
-            periflow_logger.debug("Wait for ACK.")
-            ack = self._ack_ipc_channel.read(timeout=None)
-            periflow_logger.debug("ACK received.")
-            self._is_step_started = False
-            if ack["status"] != CommResultStatus.SUCCESS:
-                raise RuntimeError(f"Invalid IPC message from FTModule: {ack}")
-
-            # If emergency save is done, terminate the training process.
-            if self._is_saved and self._save_method is SaveType.EMERGENCY:
-                sys.exit()
-
-        except IpcConnectionFailureException as ipc_connection_failure:
-            raise RuntimeError("IPC connection between training manager and FTModule is broken.") \
-                from ipc_connection_failure
+            self.start_step()
+            yield
+        finally:
+            self.end_step()
 
     def is_emergency_save(self):
         return self._emergency_save_step == self._cur_step
