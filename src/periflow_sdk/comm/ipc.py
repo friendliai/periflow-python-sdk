@@ -73,6 +73,7 @@ class FifoReader(FifoBase):
         # Read-only and non-blocking
         return os.O_RDONLY | os.O_NONBLOCK
 
+    def read(self, timeout: Optional[float] = None) -> Optional[bytes]:
         """ Read a message from the FIFO.
         If timeout is given, it specifies the length of time in milliseconds which the system will wait for events
         before returning. If timeout is omitted, negative, or None, the call will block until there is an event for the

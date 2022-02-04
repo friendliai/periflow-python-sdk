@@ -6,6 +6,7 @@ from typing import List
 
 from periflow_sdk.dataloading.sampler import ResumableRandomSampler, ResumableSequentialSampler
 
+
 @pytest.fixture
 def dataset():
     return [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]

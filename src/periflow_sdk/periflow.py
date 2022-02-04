@@ -4,18 +4,16 @@
 import os
 import atexit
 from enum import Enum
-from dataclasses import dataclass, asdict
-import functools
+import copy
 import time
 import sys
 from threading import Thread
 from typing import Callable, Dict, List
 import logging
 from pathlib import Path
+import json
 
 import torch
-from periflow_sdk.checkpoint.checkpoint_func import sync_checkpoint_func
-from periflow_sdk.checkpoint.state_provider import default_state_provider
 from periflow_sdk.comm.ipc import IpcCommPurpose, CommResultStatus, get_default_ipc_channel
 from periflow_sdk.comm.errors import IpcTimeoutException, IpcConnectionFailureException
 
@@ -29,9 +27,16 @@ class SaveType(str, Enum):
 
 class TrainingManager:
     """ The training wrapper class for general PyTorch training code.
+    Notes: This
     """
-    def __init__(self):
-        self._is_local = os.environ.get("PERIFLOW_ENABLED") != "1"
+    def __init__(self,
+                 log_file_name: str = None,
+                 is_local: bool = None,
+                 teardown_at_exit: bool = True):
+        if is_local is None:
+            self._is_local = os.environ.get("PERIFLOW_ENABLED") != "1"
+        else:
+            self._is_local = is_local
         self._total_train_steps = None
         self._cur_step = 0
         self._step_info_ipc_channel = None
@@ -45,7 +50,13 @@ class TrainingManager:
         self._save_method = SaveType.NORMAL
         self._checkpoint_path = None
         self._step_start_time = 0
-        self._local_log_path = Path(f"./periflow_trainer_{int(time.time())}.log")
+        if log_file_name is None:
+            self._log_path = Path(f"./periflow_trainer_{int(time.time())}.log")
+        else:
+            self._log_path = Path(log_file_name)
+        self._has_locally_logged = False
+        self._teardown_at_exit = teardown_at_exit
+        self._emergency_save_step = -1
 
     def init(self,
              total_train_steps: int,
@@ -80,8 +91,9 @@ class TrainingManager:
             self._wait_emergency_save_thread = Thread(target=self._wait_for_emergency_save_request, daemon=True)
             self._wait_emergency_save_thread.start()
 
-        # teardown will be called at exit of the program.
-        atexit.register(self._teardown)
+        if self._teardown_at_exit:
+            # teardown will be called at exit of the program.
+            atexit.register(self._teardown)
 
     def _teardown(self):
         """ Clean up resources.
@@ -92,7 +104,11 @@ class TrainingManager:
             self._ack_ipc_channel.close()
             self._emergency_save_ipc_channel.close()
             self._metric_ipc_channel.close()
-            self._wait_emergency_save_thread.join()
+
+            self._step_info_ipc_channel.remove()
+            self._ack_ipc_channel.remove()
+            self._emergency_save_ipc_channel.remove()
+            self._metric_ipc_channel.remove()
 
     def _wait_for_emergency_save_request(self):
         """ Wait for the emergency save request from the IPC channel.
@@ -130,6 +146,7 @@ class TrainingManager:
             periflow_logger.debug("Wait for ACK.")
             ack = self._ack_ipc_channel.read(timeout=None)
             periflow_logger.debug("ACK received.")
+            self._is_step_started = False
             if ack["status"] != CommResultStatus.SUCCESS:
                 raise RuntimeError(f"Invalid IPC message from FTModule: {ack}")
 
@@ -145,17 +162,19 @@ class TrainingManager:
         return self._emergency_save_step == self._cur_step
 
     def _local_log(self, msg):
-        mode = "a" if self._cur_step > 1 else "w"
-        with self._local_log_path.open(mode=mode) as log_file:
-            log_file.write(f"{msg}\n")
+        mode = "a" if self._has_locally_logged else "w"
+        with self._log_path.open(mode=mode) as log_file:
+            log_file.write(f"{json.dumps(msg)}\n")
+        self._has_locally_logged = True
 
     def log(self, msg: Dict):
-        if "step" not in msg:
-            msg["step"] = self._cur_step
+        new_msg = copy.deepcopy(msg)
+        if "step" not in new_msg:
+            new_msg["step"] = self._cur_step
         if self._is_local:
-            self._local_log(msg)
+            self._local_log(new_msg)
         else:
-            self._metric_ipc_channel.write(msg)
+            self._metric_ipc_channel.write(new_msg)
 
     def save(self, obj, path: str, async_save: bool = False):
         assert not self._is_saved, "You cannot call `pf.save()` twice within a training step."
