@@ -1,24 +1,26 @@
 """The periflow training manager module.
 """
 
-import os
 import atexit
-from enum import Enum
 import copy
-import time
-import sys
-from threading import Thread
-from typing import Callable, Dict, List
-import logging
-from pathlib import Path
 import json
+import logging
+import os
+import sys
+import time
 from contextlib import contextmanager
+from enum import Enum
+from pathlib import Path
+from threading import Thread
+from typing import Dict
 
 import torch
-from periflow_sdk.comm.ipc import IpcCommPurpose, CommResultStatus, get_default_ipc_channel
+
 from periflow_sdk.comm.errors import IpcTimeoutException, IpcConnectionFailureException
+from periflow_sdk.comm.ipc import IpcCommPurpose, CommResultStatus, get_default_ipc_channel
 
 periflow_logger = logging.getLogger("periflow")
+CKPT_FILE_NAME = "model_optim_rng.pt"
 
 
 class SaveType(str, Enum):
@@ -27,8 +29,8 @@ class SaveType(str, Enum):
 
 
 class TrainingManager:
+
     """ The training wrapper class for general PyTorch training code.
-    Notes: This
     """
     def __init__(self,
                  log_file_name: str = None,
@@ -46,18 +48,24 @@ class TrainingManager:
         self._metric_ipc_channel = None
         self._wait_emergency_save_thread = None
         self._local_rank = None
-        self._is_step_started = False
         self._is_saved = False
         self._save_method = SaveType.NORMAL
         self._checkpoint_path = None
-        self._step_start_time = 0
-        if log_file_name is None:
-            self._log_path = Path(f"./periflow_trainer_{int(time.time())}.log")
+        self._step_start_time = None
+        if self._is_local:
+            if log_file_name is None:
+                self._log_file = Path(f"./periflow_trainer_{int(time.time())}.log").open("w")
+            else:
+                self._log_file = Path(log_file_name).open("w")
         else:
-            self._log_path = Path(log_file_name)
+            self._log_file = None
         self._has_locally_logged = False
         self._teardown_at_exit = teardown_at_exit
         self._emergency_save_step = -1
+
+    @property
+    def _is_step_started(self) -> bool:
+        return self._step_start_time is not None
 
     def init(self,
              total_train_steps: int,
@@ -67,6 +75,7 @@ class TrainingManager:
 
         Arguments:
             - total_train_steps: The number of total training steps
+            - processed_steps: How many training steps processed before init()?
             - local_rank: The local rank of this training process
         """
         self._total_train_steps = total_train_steps
@@ -100,7 +109,6 @@ class TrainingManager:
 
     def _teardown(self):
         """ Clean up resources.
-        Do nothing for local mode.
         """
         if not self._is_local:
             self._step_info_ipc_channel.close()
@@ -113,6 +121,9 @@ class TrainingManager:
             self._emergency_save_ipc_channel.remove()
             self._metric_ipc_channel.remove()
 
+        else:
+            self._log_file.close()
+
     def _wait_for_emergency_save_request(self):
         """ Wait for the emergency save request from the IPC channel.
         Do nothing for local mode.
@@ -124,13 +135,21 @@ class TrainingManager:
         else:
             self._emergency_save_step = msg['emergency_save_step']
 
-    def start_step(self):
+    def start_step(self) -> None:
+        """
+
+        Returns:
+
+        """
         assert not self._is_step_started, "Existing steps must finish before calling start_step()!"
         self._step_start_time = time.time()
         self._cur_step += 1
-        self._is_step_started = True
 
-    def end_step(self):
+    def end_step(self) -> None:
+        """
+        Finish the current training step.
+        Returns:
+        """
         assert self._is_step_started, "Existing steps must start before calling end_step()!"
         step_time = time.time() - self._step_start_time
         if not self._is_local:
@@ -160,26 +179,39 @@ class TrainingManager:
             except IpcConnectionFailureException as ipc_connection_failure:
                 raise RuntimeError("IPC connection between training manager and FTModule is broken.") \
                     from ipc_connection_failure
-        self._is_step_started = False
+        self._step_start_time = None
 
     @contextmanager
-    def train_step(self):
+    def train_step(self) -> None:
+        """
+        The context management wrapper for `start_step` and `end_step`.
+        Returns: None
+        """
         try:
             self.start_step()
             yield
         finally:
             self.end_step()
 
-    def is_emergency_save(self):
+    def is_emergency_save(self) -> bool:
+        """
+        Informs whether emergency save should be handled this step or not.
+        Returns: 'True' if emergency save is set, 'False' if not.
+        """
         return self._emergency_save_step == self._cur_step
 
     def _local_log(self, msg):
-        mode = "a" if self._has_locally_logged else "w"
-        with self._log_path.open(mode=mode) as log_file:
-            log_file.write(f"{json.dumps(msg)}\n")
-        self._has_locally_logged = True
+        self._log_file.write(f"{json.dumps(msg)}\n")
 
-    def log(self, msg: Dict):
+    def log(self, msg: Dict) -> None:
+        """
+        Log a key-value metric dict and send it to Periflow. `step` info is added if not exists.
+        Args:
+            msg: A key-value dict containing user-defined metrics.
+
+        Returns: None
+
+        """
         new_msg = copy.deepcopy(msg)
         if "step" not in new_msg:
             new_msg["step"] = self._cur_step
@@ -188,11 +220,32 @@ class TrainingManager:
         else:
             self._metric_ipc_channel.write(new_msg)
 
-    def save(self, obj, path: str, async_save: bool = False):
+    def save(self, obj, path: os.PathLike, async_save: bool = False) -> None:
+        """
+        Save the desired object to persistent storage.
+        Args:
+            obj: Object to be stored
+            path: Path to be stored. Ignored in cluster mode.
+            async_save: Save is done asynchronously if true. Currently not supported.
+
+        Returns: None
+
+        """
         assert not self._is_saved, "You cannot call `pf.save()` twice within a training step."
         assert self._is_step_started, "You can only call `pf.save()` within a training step scope."
         if async_save:
             raise NotImplementedError("Asynchronous checkpointing is not supported for now.")
+        # Override path in cluster mode.
+        if not self._is_local:
+            assert "CKPT_PATH" in os.environ, "Environment variable `CKPT_PATH` should be set in cloud mode!"
+            assert "MP_DEGREE" in os.environ, "Environment variable `MP_DEGREE` should be set in cloud mode!"
+            assert "PP_DEGREE" in os.environ, "Environment variable `PP_DEGREE` should be set in cloud mode!"
+            mp_degree = os.environ.get("MP_DEGREE")
+            pp_degree = os.environ.get("PP_DEGREE")
+            path = Path(os.environ.get("CKPT_PATH")) / "iter_{:07d}/mp_rank_{:02d}_{:03d}".format(
+                self._cur_step, mp_degree, pp_degree) / CKPT_FILE_NAME
+            if not path.parent.exists():
+                path.parent.mkdir(parents=True, exist_ok=True)
         torch.save(obj, path)
         self._is_saved = True
         if self.is_emergency_save():

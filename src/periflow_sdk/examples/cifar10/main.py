@@ -127,10 +127,13 @@ else:
     sampler = ResumableRandomSampler(len(trainset), args.batch_size, False)
     download = True
 
-trainloader = torch.utils.data.DataLoader(
-    trainset, batch_sampler=sampler, num_workers=args.num_workers)
-testloader = torch.utils.data.DataLoader(
-    testset, batch_size=100, shuffle=False, num_workers=args.num_workers)
+trainloader = torch.utils.data.DataLoader(trainset,
+                                          batch_sampler=sampler,
+                                          num_workers=args.num_workers)
+testloader = torch.utils.data.DataLoader(testset,
+                                         batch_size=100,
+                                         shuffle=False,
+                                         num_workers=args.num_workers)
 
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.SGD(net.parameters(), lr=args.lr,
@@ -190,4 +193,4 @@ for step in range(latest_step + 1, args.total_steps + 1):
             pf.save({'latest_step': step,
                      'model': net.state_dict(),
                      'optimizer': optimizer.state_dict(),
-                    'lr_scheduler': scheduler.state_dict()}, ckpt_path)
+                     'lr_scheduler': scheduler.state_dict()}, ckpt_path)
