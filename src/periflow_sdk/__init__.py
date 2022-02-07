@@ -140,6 +140,7 @@ class TrainingManager:
         assert not self._is_step_started, "Existing steps must finish before calling start_step()!"
         self._step_start_time = time.monotonic()
         self._cur_step += 1
+        self._is_saved = False
 
     def end_step(self) -> None:
         """

@@ -177,11 +177,35 @@ def test_cloud_save_load(cloud_manager):
     read_obj = cloud_manager.load(expected_ckpt_path)
     assert read_obj == obj
 
+    expected_ckpt_path.unlink()
+    expected_ckpt_path.parent.rmdir()
+
+    # Save once again with the same manager.
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        f = executor.submit(_send_ack_on_receive, server_step_channel, server_ack_channel)
+        cloud_manager.start_step()
+        time.sleep(0.1)
+        obj = {"Hello": 1.0}
+        cloud_manager.save(obj, CKPT_PATH)
+        cloud_manager.end_step()
+        stat_info_msg = f.result()
+        assert _valid_step_info(stat_info_msg)
+        assert stat_info_msg["saved"]
+        assert stat_info_msg["save_type"] == SaveType.NORMAL
+        expected_ckpt_path = (Path(CLOUD_CKPT_PATH) /
+                              "iter_{:07d}/mp_rank_{:02d}_{:03d}".format(2, MP_DEGREE, PP_DEGREE) /
+                              CKPT_FILE_NAME)
+        assert stat_info_msg["checkpoint_path"] == str(expected_ckpt_path.resolve())
+
+    read_obj = cloud_manager.load(expected_ckpt_path)
+    assert read_obj == obj
+
+    expected_ckpt_path.unlink()
+    expected_ckpt_path.parent.rmdir()
+
     server_step_channel.close()
     server_ack_channel.close()
     cloud_manager._teardown()
-    expected_ckpt_path.unlink()
-    expected_ckpt_path.parent.rmdir()
 
 
 def test_cloud_metric(cloud_manager):
