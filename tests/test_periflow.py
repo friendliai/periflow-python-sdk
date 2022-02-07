@@ -101,6 +101,17 @@ def test_step(cloud_manager):
     cloud_manager._teardown()
 
 
+def test_step_error(local_manager):
+    local_manager.start_step()
+    with pytest.raises(AssertionError) as e:
+        local_manager.start_step()
+    assert str(e.value) == "Existing steps must finish before calling start_step()!"
+    local_manager.end_step()
+    with pytest.raises(AssertionError) as e:
+        local_manager.end_step()
+    assert str(e.value) == "Existing steps must start before calling end_step()!"
+
+
 def test_step_multi_ranks(cloud_manager, cloud_manager_v2):
     server_step_channel = get_default_ipc_channel(purpose=IpcCommPurpose.STEP_INFO,
                                                   local_rank=LOCAL_RANK)
@@ -208,6 +219,26 @@ def test_cloud_save_load(cloud_manager):
     cloud_manager._teardown()
 
 
+def test_duplicate_save_error(local_manager):
+    local_manager.start_step()
+    obj = {"some value": 2.1}
+    local_manager.save(obj, CKPT_PATH)
+    Path(CKPT_PATH).unlink()
+    with pytest.raises(AssertionError) as e:
+        local_manager.save(obj, CKPT_PATH)
+    assert str(e.value) == "You cannot call `pf.save()` twice within a training step."
+    local_manager.end_step()
+
+
+def test_save_out_of_scope(local_manager):
+    local_manager.start_step()
+    obj = {"some value": 2.1}
+    local_manager.end_step()
+    with pytest.raises(AssertionError) as e:
+        local_manager.save(obj, CKPT_PATH)
+    assert str(e.value) == "You can only call `pf.save()` within a training step scope."
+
+
 def test_cloud_metric(cloud_manager):
     metric_ipc_channel = get_default_ipc_channel(purpose=IpcCommPurpose.METRIC,
                                                  local_rank=LOCAL_RANK)
@@ -242,18 +273,24 @@ def test_local_metric(local_manager):
     os.unlink(LOG_FILE_NAME)
 
 
-def _send_emergency_save(emergency_channel: IpcChannel):
-    emergency_channel.write({"emergency_save_step": 1})
+def _send_emergency_save(emergency_channel: IpcChannel, step: int):
+    emergency_channel.write({"emergency_save_step": step})
     return True
 
 
 def test_emergency_save(cloud_manager):
+    server_step_channel = get_default_ipc_channel(purpose=IpcCommPurpose.STEP_INFO,
+                                                  local_rank=LOCAL_RANK)
+    server_ack_channel = get_default_ipc_channel(purpose=IpcCommPurpose.ACK,
+                                                 local_rank=LOCAL_RANK)
     server_emergency_channel = get_default_ipc_channel(purpose=IpcCommPurpose.EMERGENCY_SAVE,
                                                        local_rank=LOCAL_RANK)
+    server_step_channel.open()
+    server_ack_channel.open()
     server_emergency_channel.open()
     cloud_manager.start_step()
     with ThreadPoolExecutor(max_workers=1) as executor:
-        f = executor.submit(_send_emergency_save, server_emergency_channel)
+        f = executor.submit(_send_emergency_save, server_emergency_channel, 2)
         while True:
             try:
                 f.result(timeout=100)
@@ -261,7 +298,27 @@ def test_emergency_save(cloud_manager):
                 pass
             else:
                 break
-    time.sleep(1)
+    time.sleep(0.1)
+    assert not cloud_manager.is_emergency_save()
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        executor.submit(_send_ack_on_receive, server_step_channel, server_ack_channel)
+        time.sleep(0.1)
+        cloud_manager.end_step()
+
+    cloud_manager.start_step()
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        f = executor.submit(_send_emergency_save, server_emergency_channel, 2)
+        while True:
+            try:
+                f.result(timeout=100)
+            except TimeoutError:
+                pass
+            else:
+                break
+    time.sleep(0.1)
     assert cloud_manager.is_emergency_save()
+
+    server_step_channel.close()
+    server_ack_channel.close()
     server_emergency_channel.close()
     cloud_manager._teardown()
