@@ -1,15 +1,12 @@
 '''Train CIFAR10 with PyTorch.'''
-from dataclasses import dataclass
 import os
 import argparse
 import math
 from pathlib import Path
-from multiprocessing import freeze_support
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import torch.nn.functional as F
 import torch.backends.cudnn as cudnn
 
 import torchvision
@@ -34,7 +31,7 @@ def train_batch(inputs,
     optimizer.step()
     lr_scheduler.step()
 
-    pf.log({"training_loss": loss.item(),
+    pf.metric({"training_loss": loss.item(),
             "learning_rate": lr_scheduler.get_last_lr()})
 
 def test():

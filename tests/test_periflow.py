@@ -10,7 +10,7 @@ from typing import Dict
 
 import pytest
 import torch
-from periflow_sdk import TrainingManager, SaveType
+from periflow_sdk import TrainingManager, SaveType, CKPT_FILE_NAME
 from periflow_sdk.comm.ipc import get_default_ipc_channel, IpcCommPurpose, IpcChannel, CommResultStatus
 
 TOTAL_TRAIN_STEPS = 5
@@ -18,6 +18,10 @@ LOCAL_RANK = 0
 ANOTHER_LOCAL_RANK = 1
 LOG_FILE_NAME = "./temp_log_txt"
 CKPT_PATH = "./ckpt.pt"
+CLOUD_CKPT_PATH = "./cloud"
+DP_DEGREE = 0
+MP_DEGREE = 1
+PP_DEGREE = 2
 
 
 @pytest.fixture
@@ -31,6 +35,10 @@ def local_manager():
 def cloud_manager():
     manager = TrainingManager(is_local=False, teardown_at_exit=False)
     manager.init(total_train_steps=TOTAL_TRAIN_STEPS, local_rank=LOCAL_RANK)
+    os.environ.update({"CKPT_PATH": CLOUD_CKPT_PATH,
+                       "DP_DEGREE": str(DP_DEGREE),
+                       "MP_DEGREE": str(MP_DEGREE),
+                       "PP_DEGREE": str(PP_DEGREE)})
     return manager
 
 
@@ -38,6 +46,10 @@ def cloud_manager():
 def cloud_manager_v2():
     manager = TrainingManager(is_local=False, teardown_at_exit=False)
     manager.init(total_train_steps=TOTAL_TRAIN_STEPS, local_rank=ANOTHER_LOCAL_RANK)
+    os.environ.update({"CKPT_PATH": CLOUD_CKPT_PATH,
+                       "DP_DEGREE": str(DP_DEGREE),
+                       "MP_DEGREE": str(MP_DEGREE),
+                       "PP_DEGREE": str(PP_DEGREE)})
     return manager
 
 
@@ -126,7 +138,19 @@ def test_step_multi_ranks(cloud_manager, cloud_manager_v2):
     cloud_manager_v2._teardown()
 
 
-def test_save(cloud_manager):
+def test_local_save_load(local_manager):
+    local_manager.start_step()
+    obj = {"Hello": 1.0}
+    local_manager.save(obj, CKPT_PATH)
+    local_manager.end_step()
+
+    read_obj = local_manager.load(CKPT_PATH)
+    assert read_obj == obj
+    local_manager._teardown()
+    os.unlink(CKPT_PATH)
+
+
+def test_cloud_save_load(cloud_manager):
     server_step_channel = get_default_ipc_channel(purpose=IpcCommPurpose.STEP_INFO,
                                                   local_rank=LOCAL_RANK)
     server_ack_channel = get_default_ipc_channel(purpose=IpcCommPurpose.ACK,
@@ -145,29 +169,33 @@ def test_save(cloud_manager):
         assert _valid_step_info(stat_info_msg)
         assert stat_info_msg["saved"]
         assert stat_info_msg["save_type"] == SaveType.NORMAL
-        assert stat_info_msg["checkpoint_path"] == str(Path(CKPT_PATH).resolve())
+        expected_ckpt_path = (Path(CLOUD_CKPT_PATH) /
+                              "iter_{:07d}/mp_rank_{:02d}_{:03d}".format(1, MP_DEGREE, PP_DEGREE) /
+                              CKPT_FILE_NAME)
+        assert stat_info_msg["checkpoint_path"] == str(expected_ckpt_path.resolve())
 
-    read_obj = torch.load(CKPT_PATH)
+    read_obj = cloud_manager.load(expected_ckpt_path)
     assert read_obj == obj
 
     server_step_channel.close()
     server_ack_channel.close()
     cloud_manager._teardown()
-    os.unlink(CKPT_PATH)
+    expected_ckpt_path.unlink()
+    expected_ckpt_path.parent.rmdir()
 
 
-def test_cloud_log(cloud_manager):
+def test_cloud_metric(cloud_manager):
     metric_ipc_channel = get_default_ipc_channel(purpose=IpcCommPurpose.METRIC,
                                                  local_rank=LOCAL_RANK)
     metric_ipc_channel.open()
     cloud_manager.start_step()
     float_metric = {'some_metric': 1.5}
-    cloud_manager.log(float_metric)
+    cloud_manager.metric(float_metric)
     result = metric_ipc_channel.read()
     assert "some_metric" in result and result.get("some_metric") == float_metric.get("some_metric")
     assert result.get("step") == 1
     string_metric = {'another_metric': "hello"}
-    cloud_manager.log(string_metric)
+    cloud_manager.metric(string_metric)
     result = metric_ipc_channel.read()
     assert "another_metric" in result and result.get("another_metric") == string_metric.get("another_metric")
     assert result.get("step") == 1
@@ -175,18 +203,18 @@ def test_cloud_log(cloud_manager):
     cloud_manager._teardown()
 
 
-def test_local_log(local_manager):
+def test_local_metric(local_manager):
     local_manager.start_step()
     float_metric = {'some_metric': 1.5}
     string_metric = {'another_metric': "hi"}
-    local_manager.log(float_metric)
-    local_manager.log(string_metric)
+    local_manager.metric(float_metric)
+    local_manager.metric(string_metric)
+    local_manager._teardown()
     with open(LOG_FILE_NAME, "r") as log_file:
         metric = json.loads(log_file.readline().strip())
         assert metric["some_metric"] == 1.5 and metric["step"] == 1
         metric = json.loads(log_file.readline().strip())
         assert metric["another_metric"] == "hi" and metric["step"] == 1
-    local_manager._teardown()
     os.unlink(LOG_FILE_NAME)
 
 

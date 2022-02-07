@@ -12,7 +12,7 @@ from contextlib import contextmanager
 from enum import Enum
 from pathlib import Path
 from threading import Thread
-from typing import Dict
+from typing import Dict, Union, Any, Optional
 
 import torch
 
@@ -33,8 +33,8 @@ class TrainingManager:
     """ The training wrapper class for general PyTorch training code.
     """
     def __init__(self,
-                 log_file_name: str = None,
-                 is_local: bool = None,
+                 log_file_name: Optional[str] = None,
+                 is_local: Optional[bool] = None,
                  teardown_at_exit: bool = True):
         if is_local is None:
             self._is_local = os.environ.get("PERIFLOW_ENABLED") != "1"
@@ -54,11 +54,11 @@ class TrainingManager:
         self._step_start_time = None
         if self._is_local:
             if log_file_name is None:
-                self._log_file = Path(f"./periflow_trainer_{int(time.time())}.log").open("w")
+                self._log_path = Path(f"./periflow_trainer_{int(time.time())}.log")
             else:
-                self._log_file = Path(log_file_name).open("w")
+                self._log_path = Path(log_file_name)
         else:
-            self._log_file = None
+            self._log_path = None
         self._has_locally_logged = False
         self._teardown_at_exit = teardown_at_exit
         self._emergency_save_step = -1
@@ -70,7 +70,7 @@ class TrainingManager:
     def init(self,
              total_train_steps: int,
              processed_steps: int = 0,
-             local_rank: int = 0):
+             local_rank: int = 0) -> None:
         """ Initialize training manager.
 
         Arguments:
@@ -107,7 +107,7 @@ class TrainingManager:
             # teardown will be called at exit of the program.
             atexit.register(self._teardown)
 
-    def _teardown(self):
+    def _teardown(self) -> None:
         """ Clean up resources.
         """
         if not self._is_local:
@@ -121,10 +121,7 @@ class TrainingManager:
             self._emergency_save_ipc_channel.remove()
             self._metric_ipc_channel.remove()
 
-        else:
-            self._log_file.close()
-
-    def _wait_for_emergency_save_request(self):
+    def _wait_for_emergency_save_request(self) -> None:
         """ Wait for the emergency save request from the IPC channel.
         Do nothing for local mode.
         """
@@ -137,21 +134,20 @@ class TrainingManager:
 
     def start_step(self) -> None:
         """
-
-        Returns:
-
+        Start a new training step.
+        Returns: None
         """
         assert not self._is_step_started, "Existing steps must finish before calling start_step()!"
-        self._step_start_time = time.time()
+        self._step_start_time = time.monotonic()
         self._cur_step += 1
 
     def end_step(self) -> None:
         """
         Finish the current training step.
-        Returns:
+        Returns: None
         """
         assert self._is_step_started, "Existing steps must start before calling end_step()!"
-        step_time = time.time() - self._step_start_time
+        step_time = time.monotonic() - self._step_start_time
         if not self._is_local:
             try:
                 msg = {
@@ -187,8 +183,8 @@ class TrainingManager:
         The context management wrapper for `start_step` and `end_step`.
         Returns: None
         """
+        self.start_step()
         try:
-            self.start_step()
             yield
         finally:
             self.end_step()
@@ -201,9 +197,12 @@ class TrainingManager:
         return self._emergency_save_step == self._cur_step
 
     def _local_log(self, msg):
-        self._log_file.write(f"{json.dumps(msg)}\n")
+        mode = "a" if self._has_locally_logged else "w"
+        with self._log_path.open(mode=mode) as log_file:
+            log_file.write(f"{json.dumps(msg)}\n")
+        self._has_locally_logged = True
 
-    def log(self, msg: Dict) -> None:
+    def metric(self, msg: Dict) -> None:
         """
         Log a key-value metric dict and send it to Periflow. `step` info is added if not exists.
         Args:
@@ -212,7 +211,7 @@ class TrainingManager:
         Returns: None
 
         """
-        new_msg = copy.deepcopy(msg)
+        new_msg = msg.copy()
         if "step" not in new_msg:
             new_msg["step"] = self._cur_step
         if self._is_local:
@@ -220,7 +219,33 @@ class TrainingManager:
         else:
             self._metric_ipc_channel.write(new_msg)
 
-    def save(self, obj, path: os.PathLike, async_save: bool = False) -> None:
+    def _get_cloud_path(self) -> Path:
+        assert "CKPT_PATH" in os.environ, "Environment variable `CKPT_PATH` should be set in cloud mode!"
+        assert "MP_DEGREE" in os.environ, "Environment variable `MP_DEGREE` should be set in cloud mode!"
+        assert "PP_DEGREE" in os.environ, "Environment variable `PP_DEGREE` should be set in cloud mode!"
+        mp_degree = os.environ.get("MP_DEGREE")
+        pp_degree = os.environ.get("PP_DEGREE")
+        path = Path(os.environ.get("CKPT_PATH")) / "iter_{:07d}/mp_rank_{:02d}_{:03d}".format(
+            self._cur_step, int(mp_degree), int(pp_degree)) / CKPT_FILE_NAME
+        if not path.parent.exists():
+            path.parent.mkdir(parents=True, exist_ok=True)
+        return path
+
+    def load(self, path: Union[os.PathLike, str]) -> Any:
+        """
+        Load the saved object from persistent storage. In local mode, this is same as `torch.save()`.
+        In cloud mode, it ignores the 'path' and loads from the cloud path.
+        Args:
+            path: The path of target object. Ignored in cloud mode.
+
+        Returns: Loaded object
+
+        """
+        if not self._is_local:
+            path = self._get_cloud_path()
+        return torch.load(path)
+
+    def save(self, obj, path: Union[os.PathLike, str], async_save: bool = False) -> None:
         """
         Save the desired object to persistent storage.
         Args:
@@ -237,15 +262,7 @@ class TrainingManager:
             raise NotImplementedError("Asynchronous checkpointing is not supported for now.")
         # Override path in cluster mode.
         if not self._is_local:
-            assert "CKPT_PATH" in os.environ, "Environment variable `CKPT_PATH` should be set in cloud mode!"
-            assert "MP_DEGREE" in os.environ, "Environment variable `MP_DEGREE` should be set in cloud mode!"
-            assert "PP_DEGREE" in os.environ, "Environment variable `PP_DEGREE` should be set in cloud mode!"
-            mp_degree = os.environ.get("MP_DEGREE")
-            pp_degree = os.environ.get("PP_DEGREE")
-            path = Path(os.environ.get("CKPT_PATH")) / "iter_{:07d}/mp_rank_{:02d}_{:03d}".format(
-                self._cur_step, mp_degree, pp_degree) / CKPT_FILE_NAME
-            if not path.parent.exists():
-                path.parent.mkdir(parents=True, exist_ok=True)
+            path = self._get_cloud_path()
         torch.save(obj, path)
         self._is_saved = True
         if self.is_emergency_save():
