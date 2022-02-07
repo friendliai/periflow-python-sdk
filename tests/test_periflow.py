@@ -185,7 +185,7 @@ def test_cloud_save_load(cloud_manager):
         f = executor.submit(_send_ack_on_receive, server_step_channel, server_ack_channel)
         cloud_manager.start_step()
         time.sleep(0.1)
-        obj = {"Hello": 1.0}
+        obj = {"Hello": 1.5}
         cloud_manager.save(obj, CKPT_PATH)
         cloud_manager.end_step()
         stat_info_msg = f.result()
