@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import Dict
 
 import pytest
-import torch
 from periflow_sdk import TrainingManager, SaveType, CKPT_FILE_NAME
 from periflow_sdk.comm.ipc import get_default_ipc_channel, IpcCommPurpose, IpcChannel, CommResultStatus
 
@@ -189,7 +188,6 @@ def test_cloud_save_load(cloud_manager):
     assert read_obj == obj
 
     expected_ckpt_path.unlink()
-    expected_ckpt_path.parent.rmdir()
 
     # Save once again with the same manager.
     with ThreadPoolExecutor(max_workers=1) as executor:
@@ -213,6 +211,7 @@ def test_cloud_save_load(cloud_manager):
 
     expected_ckpt_path.unlink()
     expected_ckpt_path.parent.rmdir()
+    expected_ckpt_path.parent.parent.rmdir()
 
     server_step_channel.close()
     server_ack_channel.close()
