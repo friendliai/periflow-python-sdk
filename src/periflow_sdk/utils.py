@@ -20,9 +20,9 @@ class DistributeConfig:
     rank: int
 
     def __post_init__(self):
-        self.pp_rank: int = 1
-        self.mp_rank: int = 1
-        self.dp_rank: int = 1
+        self.pp_rank: int = 0
+        self.mp_rank: int = 0
+        self.dp_rank: int = 0
 
 
 def ensure_divisibility(numerator: int, denominator: int):
@@ -51,8 +51,8 @@ def ensure_valid_parallelism_config(dist_config: DistributeConfig):
     parallelism_order = os.environ.get("PARALLELISM_ORDER", None)
 
     if all(x is None for x in [dp_degree, mp_degree, pp_degree, parallelism_order]):
-        # TODO (taebum): should work when dist config is not set
-        raise NotImplementedError
+        # Should work when parallelization is not set
+        return
 
     if any(x is None for x in [dp_degree, mp_degree, pp_degree, parallelism_order]):
         none_keys = [x for x in ["DP_DEGREE", "MP_DEGREE", "PP_DEGREE", "PARALLELISM_ORDER"] \
