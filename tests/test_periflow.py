@@ -18,10 +18,11 @@ ANOTHER_LOCAL_RANK = 1
 LOG_FILE_NAME = "./temp_log_txt"
 CKPT_PATH = "./ckpt.pt"
 CLOUD_CKPT_DIR = "./cloud"
-DP_DEGREE = 0
-MP_DEGREE = 1
+DP_DEGREE = 2
+MP_DEGREE = 4
 PP_DEGREE = 2
 RANK = 4
+PARALLELISM_ORDER = "dp,pp,mp"
 NODE_RANK = 1
 NUM_NODES = 4
 WORLD_SIZE = 16
@@ -35,31 +36,33 @@ def local_manager():
 
 
 @pytest.fixture
-def cloud_manager():
+def cloud_manager(monkeypatch):
     manager = TrainingManager(is_local=False, teardown_at_exit=False)
-    os.environ.update({"CKPT_DIR": CLOUD_CKPT_DIR,
-                       "DP_DEGREE": str(DP_DEGREE),
-                       "MP_DEGREE": str(MP_DEGREE),
-                       "PP_DEGREE": str(PP_DEGREE),
-                       "RANK": str(RANK),
-                       "NODE_RANK": str(NODE_RANK),
-                       "NUM_NODES": str(NUM_NODES),
-                       "WORLD_SIZE": str(WORLD_SIZE)})
+    monkeypatch.setenv("CKPT_DIR", CLOUD_CKPT_DIR)
+    monkeypatch.setenv("DP_DEGREE", str(DP_DEGREE))
+    monkeypatch.setenv("MP_DEGREE", str(MP_DEGREE))
+    monkeypatch.setenv("PP_DEGREE", str(PP_DEGREE))
+    monkeypatch.setenv("PARALLELISM_ORDER", PARALLELISM_ORDER)
+    monkeypatch.setenv("RANK", str(RANK))
+    monkeypatch.setenv("NODE_RANK", str(NODE_RANK))
+    monkeypatch.setenv("NUM_NODES", str(NUM_NODES))
+    monkeypatch.setenv("WORLD_SIZE", str(WORLD_SIZE))
     manager.init(total_train_steps=TOTAL_TRAIN_STEPS, local_rank=LOCAL_RANK)
     return manager
 
 
 @pytest.fixture
-def cloud_manager_v2():
+def cloud_manager_v2(monkeypatch):
     manager = TrainingManager(is_local=False, teardown_at_exit=False)
-    os.environ.update({"CKPT_DIR": CLOUD_CKPT_DIR,
-                       "DP_DEGREE": str(DP_DEGREE),
-                       "MP_DEGREE": str(MP_DEGREE),
-                       "PP_DEGREE": str(PP_DEGREE),
-                       "RANK": str(RANK + 1),
-                       "NODE_RANK": str(NODE_RANK),
-                       "NUM_NODES": str(NUM_NODES),
-                       "WORLD_SIZE": str(WORLD_SIZE)})
+    monkeypatch.setenv("CKPT_DIR", CLOUD_CKPT_DIR)
+    monkeypatch.setenv("DP_DEGREE", str(DP_DEGREE))
+    monkeypatch.setenv("MP_DEGREE", str(MP_DEGREE))
+    monkeypatch.setenv("PP_DEGREE", str(PP_DEGREE))
+    monkeypatch.setenv("PARALLELISM_ORDER", PARALLELISM_ORDER)
+    monkeypatch.setenv("RANK", str(RANK + 1))
+    monkeypatch.setenv("NODE_RANK", str(NODE_RANK))
+    monkeypatch.setenv("NUM_NODES", str(NUM_NODES))
+    monkeypatch.setenv("WORLD_SIZE", str(WORLD_SIZE))
     manager.init(total_train_steps=TOTAL_TRAIN_STEPS, local_rank=ANOTHER_LOCAL_RANK)
     return manager
 
@@ -192,7 +195,7 @@ def test_cloud_save_load(cloud_manager):
         assert stat_info_msg["saved"]
         assert stat_info_msg["save_type"] == SaveType.NORMAL
         expected_ckpt_path = (Path(CLOUD_CKPT_DIR) /
-                              "iter_{:07d}/mp_rank_{:02d}_{:03d}".format(1, MP_DEGREE, PP_DEGREE) /
+                              "iter_{:07d}/mp_rank_{:02d}_{:03d}".format(1, cloud_manager._dist_config.mp_rank, cloud_manager._dist_config.pp_rank) /  # pylint: disable=protected-access
                               CKPT_FILE_NAME)
         assert stat_info_msg["checkpoint_path"] == str(expected_ckpt_path.resolve())
 
@@ -214,7 +217,7 @@ def test_cloud_save_load(cloud_manager):
         assert stat_info_msg["saved"]
         assert stat_info_msg["save_type"] == SaveType.NORMAL
         expected_ckpt_path = (Path(CLOUD_CKPT_DIR) /
-                              "iter_{:07d}/mp_rank_{:02d}_{:03d}".format(2, MP_DEGREE, PP_DEGREE) /
+                              "iter_{:07d}/mp_rank_{:02d}_{:03d}".format(2, cloud_manager._dist_config.mp_rank, cloud_manager._dist_config.pp_rank) /  # pylint: disable=protected-access
                               CKPT_FILE_NAME)
         assert stat_info_msg["checkpoint_path"] == str(expected_ckpt_path.resolve())
 

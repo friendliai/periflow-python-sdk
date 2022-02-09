@@ -18,6 +18,7 @@ import torch
 
 from periflow_sdk.comm.errors import IpcTimeoutException, IpcConnectionFailureException
 from periflow_sdk.comm.ipc import IpcCommPurpose, CommResultStatus, get_default_ipc_channel
+from periflow_sdk.utils import ensure_valid_parallelism_config, ensure_divisibility, DistributeConfig
 
 periflow_logger = logging.getLogger("periflow")
 CKPT_FILE_NAME = "model_optim_rng.pt"
@@ -48,7 +49,6 @@ class TrainingManager:
         self._metric_ipc_channel = None
         self._wait_emergency_save_thread = None
         self._local_rank = None
-        self._rank = None
         self._is_saved = False
         self._save_method = SaveType.NORMAL
         self._checkpoint_path = None
@@ -90,9 +90,6 @@ class TrainingManager:
 
             # Environment variable check.
             required_env_vars = ["CKPT_DIR",
-                                 "DP_DEGREE",
-                                 "MP_DEGREE",
-                                 "PP_DEGREE",
                                  "RANK",
                                  "WORLD_SIZE",
                                  "NODE_RANK",
@@ -100,9 +97,18 @@ class TrainingManager:
 
             for env_var in required_env_vars:
                 assert env_var in os.environ, f"Environment variable '{env_var}' should be set in cloud mode!"
-            self._rank = int(os.environ["RANK"])
-            devices_per_node = int(int(os.environ["WORLD_SIZE"]) / int(os.environ["NUM_NODES"]))
-            self._local_rank = self._rank % devices_per_node
+
+            # Configure dist info
+            world_size = int(os.environ["WORLD_SIZE"])
+            rank = int(os.environ["RANK"])
+            num_nodes = int(os.environ["NUM_NODES"])
+            ensure_divisibility(world_size, num_nodes)
+            devices_per_node = world_size // num_nodes
+            local_rank = rank % devices_per_node
+            self._dist_config = DistributeConfig(local_rank=local_rank, rank=rank)
+            ensure_valid_parallelism_config(self._dist_config)
+
+            # IPC Channels
             self._step_info_ipc_channel = get_default_ipc_channel(purpose=IpcCommPurpose.STEP_INFO,
                                                                   local_rank=local_rank)
             self._ack_ipc_channel = get_default_ipc_channel(purpose=IpcCommPurpose.ACK,
@@ -232,18 +238,18 @@ class TrainingManager:
         new_msg = msg.copy()
         new_msg["step"] = self._cur_step
         if not self._is_local:
-            new_msg["rank"] = self._rank
-            new_msg["local_rank"] = self._local_rank
+            new_msg["rank"] = self._dist_config.rank
+            new_msg["local_rank"] = self._dist_config.local_rank
         if self._is_local:
             self._local_log(new_msg)
         else:
             self._metric_ipc_channel.write(new_msg)
 
     def _get_cloud_path(self) -> Path:
-        mp_degree = os.environ.get("MP_DEGREE")
-        pp_degree = os.environ.get("PP_DEGREE")
+        mp_rank = self._dist_config.mp_rank
+        pp_rank = self._dist_config.pp_rank
         path = Path(os.environ.get("CKPT_DIR")) / "iter_{:07d}/mp_rank_{:02d}_{:03d}".format(
-            self._cur_step, int(mp_degree), int(pp_degree)) / CKPT_FILE_NAME
+            self._cur_step, mp_rank, pp_rank) / CKPT_FILE_NAME
         if not path.parent.exists():
             path.parent.mkdir(parents=True, exist_ok=True)
         return path
