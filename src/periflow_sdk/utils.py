@@ -74,12 +74,10 @@ def ensure_valid_parallelism_config(dist_config: DistributeConfig):
         strides = strides // _get_parallel_degree(parallel_axis)
         for pivot_rank in range(0, world_size, prev_strides):
             for start_rank in range(pivot_rank, pivot_rank + strides):
-                parallel_rank = 0
-                for rank in range(start_rank, start_rank + prev_strides, strides):
+                for parallel_axis_rank, rank in enumerate(range(start_rank, start_rank + prev_strides, strides)):
                     if rank == dist_config.rank:
                         # current process' rank
                         attr = _get_parallel_rank_attribute(parallel_axis)
-                        setattr(dist_config, attr, parallel_rank)
-                    parallel_rank += 1
+                        setattr(dist_config, attr, parallel_axis_rank)
 
         prev_strides = strides
