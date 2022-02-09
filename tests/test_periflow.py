@@ -17,7 +17,7 @@ LOCAL_RANK = 0
 ANOTHER_LOCAL_RANK = 1
 LOG_FILE_NAME = "./temp_log_txt"
 CKPT_PATH = "./ckpt.pt"
-CLOUD_CKPT_PATH = "./cloud"
+CLOUD_CKPT_DIR = "./cloud"
 DP_DEGREE = 0
 MP_DEGREE = 1
 PP_DEGREE = 2
@@ -37,7 +37,7 @@ def local_manager():
 @pytest.fixture
 def cloud_manager():
     manager = TrainingManager(is_local=False, teardown_at_exit=False)
-    os.environ.update({"CKPT_PATH": CLOUD_CKPT_PATH,
+    os.environ.update({"CKPT_DIR": CLOUD_CKPT_DIR,
                        "DP_DEGREE": str(DP_DEGREE),
                        "MP_DEGREE": str(MP_DEGREE),
                        "PP_DEGREE": str(PP_DEGREE),
@@ -52,7 +52,7 @@ def cloud_manager():
 @pytest.fixture
 def cloud_manager_v2():
     manager = TrainingManager(is_local=False, teardown_at_exit=False)
-    os.environ.update({"CKPT_PATH": CLOUD_CKPT_PATH,
+    os.environ.update({"CKPT_DIR": CLOUD_CKPT_DIR,
                        "DP_DEGREE": str(DP_DEGREE),
                        "MP_DEGREE": str(MP_DEGREE),
                        "PP_DEGREE": str(PP_DEGREE),
@@ -180,7 +180,7 @@ def test_cloud_save_load(cloud_manager):
         assert _valid_step_info(stat_info_msg)
         assert stat_info_msg["saved"]
         assert stat_info_msg["save_type"] == SaveType.NORMAL
-        expected_ckpt_path = (Path(CLOUD_CKPT_PATH) /
+        expected_ckpt_path = (Path(CLOUD_CKPT_DIR) /
                               "iter_{:07d}/mp_rank_{:02d}_{:03d}".format(1, MP_DEGREE, PP_DEGREE) /
                               CKPT_FILE_NAME)
         assert stat_info_msg["checkpoint_path"] == str(expected_ckpt_path.resolve())
@@ -203,7 +203,7 @@ def test_cloud_save_load(cloud_manager):
         assert _valid_step_info(stat_info_msg)
         assert stat_info_msg["saved"]
         assert stat_info_msg["save_type"] == SaveType.NORMAL
-        expected_ckpt_path = (Path(CLOUD_CKPT_PATH) /
+        expected_ckpt_path = (Path(CLOUD_CKPT_DIR) /
                               "iter_{:07d}/mp_rank_{:02d}_{:03d}".format(2, MP_DEGREE, PP_DEGREE) /
                               CKPT_FILE_NAME)
         assert stat_info_msg["checkpoint_path"] == str(expected_ckpt_path.resolve())

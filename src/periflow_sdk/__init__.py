@@ -89,7 +89,7 @@ class TrainingManager:
             periflow_logger.debug("Periflow SDK is working in cloud mode.")
 
             # Environment variable check.
-            required_env_vars = ["CKPT_PATH",
+            required_env_vars = ["CKPT_DIR",
                                  "DP_DEGREE",
                                  "MP_DEGREE",
                                  "PP_DEGREE",
@@ -242,7 +242,7 @@ class TrainingManager:
     def _get_cloud_path(self) -> Path:
         mp_degree = os.environ.get("MP_DEGREE")
         pp_degree = os.environ.get("PP_DEGREE")
-        path = Path(os.environ.get("CKPT_PATH")) / "iter_{:07d}/mp_rank_{:02d}_{:03d}".format(
+        path = Path(os.environ.get("CKPT_DIR")) / "iter_{:07d}/mp_rank_{:02d}_{:03d}".format(
             self._cur_step, int(mp_degree), int(pp_degree)) / CKPT_FILE_NAME
         if not path.parent.exists():
             path.parent.mkdir(parents=True, exist_ok=True)
