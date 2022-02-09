@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import Dict
 
 import pytest
-import torch
 from periflow_sdk import TrainingManager, SaveType, CKPT_FILE_NAME
 from periflow_sdk.comm.ipc import get_default_ipc_channel, IpcCommPurpose, IpcChannel, CommResultStatus
 
@@ -57,7 +56,7 @@ def cloud_manager_v2():
                        "DP_DEGREE": str(DP_DEGREE),
                        "MP_DEGREE": str(MP_DEGREE),
                        "PP_DEGREE": str(PP_DEGREE),
-                       "RANK": str(RANK),
+                       "RANK": str(RANK + 1),
                        "NODE_RANK": str(NODE_RANK),
                        "NUM_NODES": str(NUM_NODES),
                        "WORLD_SIZE": str(WORLD_SIZE)})
