@@ -48,6 +48,7 @@ class TrainingManager:
         self._metric_ipc_channel = None
         self._wait_emergency_save_thread = None
         self._local_rank = None
+        self._rank = None
         self._is_saved = False
         self._save_method = SaveType.NORMAL
         self._checkpoint_path = None
@@ -80,12 +81,28 @@ class TrainingManager:
         """
         self._total_train_steps = total_train_steps
         self._cur_step = processed_steps
-        self._local_rank = local_rank
 
         if self._is_local:
+            self._local_rank = local_rank
             periflow_logger.debug("Periflow SDK is working in local mode.")
         else:
             periflow_logger.debug("Periflow SDK is working in cloud mode.")
+
+            # Environment variable check.
+            required_env_vars = ["CKPT_PATH",
+                                 "DP_DEGREE",
+                                 "MP_DEGREE",
+                                 "PP_DEGREE",
+                                 "RANK",
+                                 "WORLD_SIZE",
+                                 "NODE_RANK",
+                                 "NUM_NODES"]
+
+            for env_var in required_env_vars:
+                assert env_var in os.environ, f"Environment variable '{env_var}' should be set in cloud mode!"
+            self._rank = int(os.environ["RANK"])
+            devices_per_node = int(int(os.environ["WORLD_SIZE"]) / int(os.environ["NUM_NODES"]))
+            self._local_rank = self._rank % devices_per_node
             self._step_info_ipc_channel = get_default_ipc_channel(purpose=IpcCommPurpose.STEP_INFO,
                                                                   local_rank=local_rank)
             self._ack_ipc_channel = get_default_ipc_channel(purpose=IpcCommPurpose.ACK,
@@ -213,17 +230,16 @@ class TrainingManager:
 
         """
         new_msg = msg.copy()
-        if "step" not in new_msg:
-            new_msg["step"] = self._cur_step
+        new_msg["step"] = self._cur_step
+        if not self._is_local:
+            new_msg["rank"] = self._rank
+            new_msg["local_rank"] = self._local_rank
         if self._is_local:
             self._local_log(new_msg)
         else:
             self._metric_ipc_channel.write(new_msg)
 
     def _get_cloud_path(self) -> Path:
-        assert "CKPT_PATH" in os.environ, "Environment variable `CKPT_PATH` should be set in cloud mode!"
-        assert "MP_DEGREE" in os.environ, "Environment variable `MP_DEGREE` should be set in cloud mode!"
-        assert "PP_DEGREE" in os.environ, "Environment variable `PP_DEGREE` should be set in cloud mode!"
         mp_degree = os.environ.get("MP_DEGREE")
         pp_degree = os.environ.get("PP_DEGREE")
         path = Path(os.environ.get("CKPT_PATH")) / "iter_{:07d}/mp_rank_{:02d}_{:03d}".format(

@@ -22,6 +22,10 @@ CLOUD_CKPT_PATH = "./cloud"
 DP_DEGREE = 0
 MP_DEGREE = 1
 PP_DEGREE = 2
+RANK = 4
+NODE_RANK = 1
+NUM_NODES = 4
+WORLD_SIZE = 16
 
 
 @pytest.fixture
@@ -34,22 +38,30 @@ def local_manager():
 @pytest.fixture
 def cloud_manager():
     manager = TrainingManager(is_local=False, teardown_at_exit=False)
-    manager.init(total_train_steps=TOTAL_TRAIN_STEPS, local_rank=LOCAL_RANK)
     os.environ.update({"CKPT_PATH": CLOUD_CKPT_PATH,
                        "DP_DEGREE": str(DP_DEGREE),
                        "MP_DEGREE": str(MP_DEGREE),
-                       "PP_DEGREE": str(PP_DEGREE)})
+                       "PP_DEGREE": str(PP_DEGREE),
+                       "RANK": str(RANK),
+                       "NODE_RANK": str(NODE_RANK),
+                       "NUM_NODES": str(NUM_NODES),
+                       "WORLD_SIZE": str(WORLD_SIZE)})
+    manager.init(total_train_steps=TOTAL_TRAIN_STEPS, local_rank=LOCAL_RANK)
     return manager
 
 
 @pytest.fixture
 def cloud_manager_v2():
     manager = TrainingManager(is_local=False, teardown_at_exit=False)
-    manager.init(total_train_steps=TOTAL_TRAIN_STEPS, local_rank=ANOTHER_LOCAL_RANK)
     os.environ.update({"CKPT_PATH": CLOUD_CKPT_PATH,
                        "DP_DEGREE": str(DP_DEGREE),
                        "MP_DEGREE": str(MP_DEGREE),
-                       "PP_DEGREE": str(PP_DEGREE)})
+                       "PP_DEGREE": str(PP_DEGREE),
+                       "RANK": str(RANK),
+                       "NODE_RANK": str(NODE_RANK),
+                       "NUM_NODES": str(NUM_NODES),
+                       "WORLD_SIZE": str(WORLD_SIZE)})
+    manager.init(total_train_steps=TOTAL_TRAIN_STEPS, local_rank=ANOTHER_LOCAL_RANK)
     return manager
 
 
@@ -218,11 +230,15 @@ def test_cloud_metric(cloud_manager):
     result = metric_ipc_channel.read()
     assert "some_metric" in result and result.get("some_metric") == float_metric.get("some_metric")
     assert result.get("step") == 1
+    assert result.get("rank") == RANK
+    assert result.get("local_rank") == LOCAL_RANK
     string_metric = {'another_metric': "hello"}
     cloud_manager.metric(string_metric)
     result = metric_ipc_channel.read()
     assert "another_metric" in result and result.get("another_metric") == string_metric.get("another_metric")
     assert result.get("step") == 1
+    assert result.get("rank") == RANK
+    assert result.get("local_rank") == LOCAL_RANK
     metric_ipc_channel.close()
     cloud_manager._teardown()
 
