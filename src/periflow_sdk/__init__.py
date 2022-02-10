@@ -42,7 +42,7 @@ class TrainingManager:
         else:
             self._is_local = is_local
         self._total_train_steps = None
-        self._cur_step = 0
+        self._cur_step = -1
         self._step_info_ipc_channel = None
         self._ack_ipc_channel = None
         self._emergency_save_ipc_channel = None
@@ -64,6 +64,7 @@ class TrainingManager:
         self._teardown_at_exit = teardown_at_exit
         self._emergency_save_step = -1
         self._has_training_started = False
+        self._dist_config = None
 
     @property
     def _is_step_started(self) -> bool:
@@ -91,7 +92,8 @@ class TrainingManager:
                                  "RANK",
                                  "WORLD_SIZE",
                                  "NODE_RANK",
-                                 "NUM_NODES"]
+                                 "NUM_NODES",
+                                 "PROCESSED_STEPS"]
 
             for env_var in required_env_vars:
                 assert env_var in os.environ, f"Environment variable '{env_var}' should be set in cloud mode!"
@@ -103,6 +105,7 @@ class TrainingManager:
             ensure_divisibility(world_size, num_nodes)
             devices_per_node = world_size // num_nodes
             local_rank = rank % devices_per_node
+            self._cur_step = int(os.environ.get("PROCESSED_STEPS"))
             self._dist_config = DistributeConfig(local_rank=local_rank, rank=rank)
             ensure_valid_parallelism_config(self._dist_config)
 
@@ -130,18 +133,6 @@ class TrainingManager:
 
         self._has_training_started = True
 
-    def set_processed_steps(self, processed_steps: int) -> None:
-        """
-        Set the current step to processed steps.
-        Args:
-            processed_steps: The number of processed steps of checkpoints
-
-        Returns: None
-
-        """
-        assert self._has_training_started, "set_processed_steps() should be called after init()!"
-        self._cur_step = processed_steps
-
     def _teardown(self) -> None:
         """ Clean up resources.
         """
@@ -167,6 +158,10 @@ class TrainingManager:
         else:
             self._emergency_save_step = msg['emergency_save_step']
 
+    def get_current_step(self) -> int:
+        assert self._has_training_started, "get_current_step() must be called after init()!"
+        return self._cur_step
+
     def start_step(self) -> None:
         """
         Start a new training step.
@@ -175,8 +170,9 @@ class TrainingManager:
         assert self._has_training_started, "start_step() must be called after init()!"
         assert not self._is_step_started, "Existing steps must finish before calling start_step()!"
         self._step_start_time = time.monotonic()
-        self._cur_step += 1
         self._is_saved = False
+        if not self._is_local:
+            self._cur_step += 1
 
     def end_step(self) -> None:
         """
@@ -252,8 +248,8 @@ class TrainingManager:
         """
         assert self._has_training_started, "metric() must be called after init()!"
         new_msg = msg.copy()
-        new_msg["step"] = self._cur_step
         if not self._is_local:
+            new_msg["step"] = self._cur_step
             new_msg["rank"] = self._dist_config.rank
             new_msg["local_rank"] = self._dist_config.local_rank
         if self._is_local:

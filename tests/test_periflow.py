@@ -47,6 +47,7 @@ def cloud_manager(monkeypatch):
     monkeypatch.setenv("NODE_RANK", str(NODE_RANK))
     monkeypatch.setenv("NUM_NODES", str(NUM_NODES))
     monkeypatch.setenv("WORLD_SIZE", str(WORLD_SIZE))
+    monkeypatch.setenv("PROCESSED_STEPS", str(0))
     manager.init(total_train_steps=TOTAL_TRAIN_STEPS, local_rank=LOCAL_RANK)
     return manager
 
@@ -63,6 +64,7 @@ def cloud_manager_v2(monkeypatch):
     monkeypatch.setenv("NODE_RANK", str(NODE_RANK))
     monkeypatch.setenv("NUM_NODES", str(NUM_NODES))
     monkeypatch.setenv("WORLD_SIZE", str(WORLD_SIZE))
+    monkeypatch.setenv("PROCESSED_STEPS", str(5))
     manager.init(total_train_steps=TOTAL_TRAIN_STEPS, local_rank=ANOTHER_LOCAL_RANK)
     return manager
 
@@ -142,6 +144,8 @@ def test_step_multi_ranks(cloud_manager, cloud_manager_v2):
     server_ack_channel_2.open()
 
     with ThreadPoolExecutor(max_workers=2) as executor:
+        assert cloud_manager.get_current_step() == 0
+        assert cloud_manager_v2.get_current_step() == 5
         cloud_manager.start_step()
         cloud_manager_v2.start_step()
         executor.submit(_send_ack_on_receive, server_step_channel, server_ack_channel)
@@ -175,7 +179,7 @@ def test_local_save_load(local_manager):
     os.unlink(CKPT_PATH)
 
 
-def test_cloud_save_load(cloud_manager):
+def test_cloud_save_load(cloud_manager, cloud_manager_v2):
     server_step_channel = get_default_ipc_channel(purpose=IpcCommPurpose.STEP_INFO,
                                                   local_rank=LOCAL_RANK)
     server_ack_channel = get_default_ipc_channel(purpose=IpcCommPurpose.ACK,
@@ -231,29 +235,40 @@ def test_cloud_save_load(cloud_manager):
     assert read_obj == obj
 
     expected_ckpt_path.unlink()
+    expected_ckpt_path.parent.rmdir()
+    expected_ckpt_path.parent.parent.rmdir()
 
-    # Save after set_processed_steps()
-    cloud_manager.set_processed_steps(9)
+    server_step_channel.close()
+    server_ack_channel.close()
+    cloud_manager._teardown()
+
+    # Start from existing step...
+    server_step_channel = get_default_ipc_channel(purpose=IpcCommPurpose.STEP_INFO,
+                                                  local_rank=ANOTHER_LOCAL_RANK)
+    server_ack_channel = get_default_ipc_channel(purpose=IpcCommPurpose.ACK,
+                                                 local_rank=ANOTHER_LOCAL_RANK)
+    server_step_channel.open()
+    server_ack_channel.open()
     with ThreadPoolExecutor(max_workers=1) as executor:
         f = executor.submit(_send_ack_on_receive, server_step_channel, server_ack_channel)
-        cloud_manager.start_step()
+        cloud_manager_v2.start_step()
         time.sleep(0.1)
-        obj = {"Hello": 1.5}
-        cloud_manager.save(obj, CKPT_PATH)
-        cloud_manager.end_step()
+        obj = {"Hello": 2.0}
+        cloud_manager_v2.save(obj, CKPT_PATH)
+        cloud_manager_v2.end_step()
         stat_info_msg = f.result()
         assert _valid_step_info(stat_info_msg)
         assert stat_info_msg["saved"]
         assert stat_info_msg["save_type"] == SaveType.NORMAL
         expected_ckpt_path = (Path(CLOUD_CKPT_DIR) /
                               "iter_{:07d}/mp_rank_{:02d}_{:03d}".format(
-                                  10,
-                                  cloud_manager._dist_config.mp_rank,
-                                  cloud_manager._dist_config.pp_rank) /  # pylint: disable=protected-access
+                                  6,
+                                  cloud_manager_v2._dist_config.mp_rank,
+                                  cloud_manager_v2._dist_config.pp_rank) /  # pylint: disable=protected-access
                               CKPT_FILE_NAME)
         assert stat_info_msg["checkpoint_path"] == str(expected_ckpt_path.resolve())
 
-    read_obj = cloud_manager.load(expected_ckpt_path)
+    read_obj = cloud_manager_v2.load(expected_ckpt_path)
     assert read_obj == obj
 
     expected_ckpt_path.unlink()
@@ -262,7 +277,7 @@ def test_cloud_save_load(cloud_manager):
 
     server_step_channel.close()
     server_ack_channel.close()
-    cloud_manager._teardown()
+    cloud_manager_v2._teardown()
 
 
 def test_duplicate_save_error(local_manager):
@@ -317,9 +332,9 @@ def test_local_metric(local_manager):
     local_manager._teardown()
     with open(LOG_FILE_NAME, "r") as log_file:
         metric = json.loads(log_file.readline().strip())
-        assert metric["some_metric"] == 1.5 and metric["step"] == 1
+        assert metric["some_metric"] == 1.5
         metric = json.loads(log_file.readline().strip())
-        assert metric["another_metric"] == "hi" and metric["step"] == 1
+        assert metric["another_metric"] == "hi"
     os.unlink(LOG_FILE_NAME)
 
 
