@@ -254,7 +254,7 @@ class TrainingManager:
             path.parent.mkdir(parents=True, exist_ok=True)
         return path
 
-    def load(self, path: Union[os.PathLike, str]) -> Any:
+    def load(self, path: Union[os.PathLike, str], *args, **kwargs) -> Any:
         """
         Load the saved object from persistent storage. In local mode, this is same as `torch.save()`.
         In cloud mode, it ignores the 'path' and loads from the cloud path.
@@ -266,7 +266,7 @@ class TrainingManager:
         """
         if not self._is_local:
             path = self._get_cloud_path()
-        return torch.load(path)
+        return torch.load(path, *args, **kwargs)
 
     def save(self, obj, path: Union[os.PathLike, str], async_save: bool = False) -> None:
         """
