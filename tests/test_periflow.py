@@ -195,7 +195,10 @@ def test_cloud_save_load(cloud_manager):
         assert stat_info_msg["saved"]
         assert stat_info_msg["save_type"] == SaveType.NORMAL
         expected_ckpt_path = (Path(CLOUD_CKPT_DIR) /
-                              "iter_{:07d}/mp_rank_{:02d}_{:03d}".format(1, cloud_manager._dist_config.mp_rank, cloud_manager._dist_config.pp_rank) /  # pylint: disable=protected-access
+                              "iter_{:07d}/mp_rank_{:02d}_{:03d}".format(
+                                  1,
+                                  cloud_manager._dist_config.mp_rank,
+                                  cloud_manager._dist_config.pp_rank) /  # pylint: disable=protected-access
                               CKPT_FILE_NAME)
         assert stat_info_msg["checkpoint_path"] == str(expected_ckpt_path.resolve())
 
@@ -217,7 +220,10 @@ def test_cloud_save_load(cloud_manager):
         assert stat_info_msg["saved"]
         assert stat_info_msg["save_type"] == SaveType.NORMAL
         expected_ckpt_path = (Path(CLOUD_CKPT_DIR) /
-                              "iter_{:07d}/mp_rank_{:02d}_{:03d}".format(2, cloud_manager._dist_config.mp_rank, cloud_manager._dist_config.pp_rank) /  # pylint: disable=protected-access
+                              "iter_{:07d}/mp_rank_{:02d}_{:03d}".format(
+                                  2,
+                                  cloud_manager._dist_config.mp_rank,
+                                  cloud_manager._dist_config.pp_rank) /  # pylint: disable=protected-access
                               CKPT_FILE_NAME)
         assert stat_info_msg["checkpoint_path"] == str(expected_ckpt_path.resolve())
 
@@ -240,7 +246,10 @@ def test_cloud_save_load(cloud_manager):
         assert stat_info_msg["saved"]
         assert stat_info_msg["save_type"] == SaveType.NORMAL
         expected_ckpt_path = (Path(CLOUD_CKPT_DIR) /
-                              "iter_{:07d}/mp_rank_{:02d}_{:03d}".format(10, cloud_manager._dist_config.mp_rank, cloud_manager._dist_config.pp_rank) /  # pylint: disable=protected-access
+                              "iter_{:07d}/mp_rank_{:02d}_{:03d}".format(
+                                  10,
+                                  cloud_manager._dist_config.mp_rank,
+                                  cloud_manager._dist_config.pp_rank) /  # pylint: disable=protected-access
                               CKPT_FILE_NAME)
         assert stat_info_msg["checkpoint_path"] == str(expected_ckpt_path.resolve())
 
