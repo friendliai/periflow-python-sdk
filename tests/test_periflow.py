@@ -225,6 +225,29 @@ def test_cloud_save_load(cloud_manager):
     assert read_obj == obj
 
     expected_ckpt_path.unlink()
+
+    # Save after set_processed_steps()
+    cloud_manager.set_processed_steps(9)
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        f = executor.submit(_send_ack_on_receive, server_step_channel, server_ack_channel)
+        cloud_manager.start_step()
+        time.sleep(0.1)
+        obj = {"Hello": 1.5}
+        cloud_manager.save(obj, CKPT_PATH)
+        cloud_manager.end_step()
+        stat_info_msg = f.result()
+        assert _valid_step_info(stat_info_msg)
+        assert stat_info_msg["saved"]
+        assert stat_info_msg["save_type"] == SaveType.NORMAL
+        expected_ckpt_path = (Path(CLOUD_CKPT_DIR) /
+                              "iter_{:07d}/mp_rank_{:02d}_{:03d}".format(10, cloud_manager._dist_config.mp_rank, cloud_manager._dist_config.pp_rank) /  # pylint: disable=protected-access
+                              CKPT_FILE_NAME)
+        assert stat_info_msg["checkpoint_path"] == str(expected_ckpt_path.resolve())
+
+    read_obj = cloud_manager.load(expected_ckpt_path)
+    assert read_obj == obj
+
+    expected_ckpt_path.unlink()
     expected_ckpt_path.parent.rmdir()
     expected_ckpt_path.parent.parent.rmdir()
 
