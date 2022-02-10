@@ -93,7 +93,7 @@ class TrainingManager:
                                  "WORLD_SIZE",
                                  "NODE_RANK",
                                  "NUM_NODES",
-                                 "PROCESSED_STEPS"]
+                                 "PROCESSED_ITERS"]
 
             for env_var in required_env_vars:
                 assert env_var in os.environ, f"Environment variable '{env_var}' should be set in cloud mode!"
@@ -105,7 +105,7 @@ class TrainingManager:
             ensure_divisibility(world_size, num_nodes)
             devices_per_node = world_size // num_nodes
             local_rank = rank % devices_per_node
-            self._cur_step = int(os.environ.get("PROCESSED_STEPS"))
+            self._cur_step = int(os.environ.get("PROCESSED_ITERS"))
             self._dist_config = DistributeConfig(local_rank=local_rank, rank=rank)
             ensure_valid_parallelism_config(self._dist_config)
 

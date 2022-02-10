@@ -47,7 +47,7 @@ def cloud_manager(monkeypatch):
     monkeypatch.setenv("NODE_RANK", str(NODE_RANK))
     monkeypatch.setenv("NUM_NODES", str(NUM_NODES))
     monkeypatch.setenv("WORLD_SIZE", str(WORLD_SIZE))
-    monkeypatch.setenv("PROCESSED_STEPS", str(0))
+    monkeypatch.setenv("PROCESSED_ITERS", str(0))
     manager.init(total_train_steps=TOTAL_TRAIN_STEPS, local_rank=LOCAL_RANK)
     return manager
 
@@ -64,7 +64,7 @@ def cloud_manager_v2(monkeypatch):
     monkeypatch.setenv("NODE_RANK", str(NODE_RANK))
     monkeypatch.setenv("NUM_NODES", str(NUM_NODES))
     monkeypatch.setenv("WORLD_SIZE", str(WORLD_SIZE))
-    monkeypatch.setenv("PROCESSED_STEPS", str(5))
+    monkeypatch.setenv("PROCESSED_ITERS", str(5))
     manager.init(total_train_steps=TOTAL_TRAIN_STEPS, local_rank=ANOTHER_LOCAL_RANK)
     return manager
 
