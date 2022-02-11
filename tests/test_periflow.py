@@ -31,7 +31,7 @@ WORLD_SIZE = 16
 @pytest.fixture
 def local_manager():
     manager = TrainingManager(log_file_name=LOG_FILE_NAME, is_local=True, teardown_at_exit=False)
-    manager.init(total_train_steps=TOTAL_TRAIN_STEPS, local_rank=LOCAL_RANK)
+    manager.init(total_train_steps=TOTAL_TRAIN_STEPS, local_log_name=LOG_FILE_NAME)
     return manager
 
 
@@ -48,7 +48,7 @@ def cloud_manager(monkeypatch):
     monkeypatch.setenv("NUM_NODES", str(NUM_NODES))
     monkeypatch.setenv("WORLD_SIZE", str(WORLD_SIZE))
     monkeypatch.setenv("PROCESSED_ITERS", str(0))
-    manager.init(total_train_steps=TOTAL_TRAIN_STEPS, local_rank=LOCAL_RANK)
+    manager.init(total_train_steps=TOTAL_TRAIN_STEPS)
     return manager
 
 
@@ -65,7 +65,7 @@ def cloud_manager_v2(monkeypatch):
     monkeypatch.setenv("NUM_NODES", str(NUM_NODES))
     monkeypatch.setenv("WORLD_SIZE", str(WORLD_SIZE))
     monkeypatch.setenv("PROCESSED_ITERS", str(5))
-    manager.init(total_train_steps=TOTAL_TRAIN_STEPS, local_rank=ANOTHER_LOCAL_RANK)
+    manager.init(total_train_steps=TOTAL_TRAIN_STEPS)
     return manager
 
 

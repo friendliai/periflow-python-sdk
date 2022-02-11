@@ -53,13 +53,7 @@ class TrainingManager:
         self._save_method = SaveType.NORMAL
         self._checkpoint_path = None
         self._step_start_time = None
-        if self._is_local:
-            if log_file_name is None:
-                self._log_path = Path(f"./periflow_trainer_{int(time.time())}.log")
-            else:
-                self._log_path = Path(log_file_name)
-        else:
-            self._log_path = None
+        self._log_path = None
         self._has_locally_logged = False
         self._teardown_at_exit = teardown_at_exit
         self._emergency_save_step = -1
@@ -72,7 +66,7 @@ class TrainingManager:
 
     def init(self,
              total_train_steps: int,
-             local_rank: int = 0) -> None:
+             local_log_name: Optional[str] = None) -> None:
         """ Initialize training manager.
 
         Arguments:
@@ -82,8 +76,17 @@ class TrainingManager:
         self._total_train_steps = total_train_steps
 
         if self._is_local:
-            self._local_rank = local_rank
             periflow_logger.debug("Periflow SDK is working in local mode.")
+            if local_log_name is not None:
+                self._log_path = Path(local_log_name)
+            else:
+                if torch.distributed.is_initialized():
+                    # To prevent path overlap among processes, we add rank at the end of the log file name.
+                    rank = torch.distributed.get_rank()
+                    self._log_path = Path(f"./periflow_trainer_{int(time.time())}_{rank}.log")
+                else:
+                    self._log_path = Path(f"./periflow_trainer_{int(time.time())}.log")
+            self._local_rank = None
         else:
             periflow_logger.debug("Periflow SDK is working in cloud mode.")
 
