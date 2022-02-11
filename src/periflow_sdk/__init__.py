@@ -57,7 +57,7 @@ class TrainingManager:
         self._has_locally_logged = False
         self._teardown_at_exit = teardown_at_exit
         self._emergency_save_step = -1
-        self._has_training_started = False
+        self._has_initialized = False
         self._dist_config = None
 
     @property
@@ -134,7 +134,7 @@ class TrainingManager:
             # teardown will be called at exit of the program.
             atexit.register(self._teardown)
 
-        self._has_training_started = True
+        self._has_initialized = True
 
     def _teardown(self) -> None:
         """ Clean up resources.
@@ -162,7 +162,7 @@ class TrainingManager:
             self._emergency_save_step = msg['emergency_save_step']
 
     def get_current_step(self) -> int:
-        assert self._has_training_started, "get_current_step() must be called after init()!"
+        assert self._has_initialized, "get_current_step() must be called after init()!"
         return self._cur_step
 
     def start_step(self) -> None:
@@ -170,7 +170,7 @@ class TrainingManager:
         Start a new training step.
         Returns: None
         """
-        assert self._has_training_started, "start_step() must be called after init()!"
+        assert self._has_initialized, "start_step() must be called after init()!"
         assert not self._is_step_started, "Existing steps must finish before calling start_step()!"
         self._step_start_time = time.monotonic()
         self._is_saved = False
@@ -182,7 +182,7 @@ class TrainingManager:
         Finish the current training step.
         Returns: None
         """
-        assert self._has_training_started, "end_step() must be called after init()!"
+        assert self._has_initialized, "end_step() must be called after init()!"
         assert self._is_step_started, "Existing steps must start before calling end_step()!"
         step_time = time.monotonic() - self._step_start_time
         if not self._is_local:
@@ -231,7 +231,7 @@ class TrainingManager:
         Informs whether emergency save should be handled this step or not.
         Returns: 'True' if emergency save is set, 'False' if not.
         """
-        assert self._has_training_started, "is_emergency_save() must be called after init()!"
+        assert self._has_initialized, "is_emergency_save() must be called after init()!"
         return self._emergency_save_step == self._cur_step
 
     def _local_log(self, msg):
@@ -249,7 +249,7 @@ class TrainingManager:
         Returns: None
 
         """
-        assert self._has_training_started, "metric() must be called after init()!"
+        assert self._has_initialized, "metric() must be called after init()!"
         new_msg = msg.copy()
         if not self._is_local:
             new_msg["step"] = self._cur_step
@@ -279,7 +279,7 @@ class TrainingManager:
         Returns: Loaded object
 
         """
-        assert self._has_training_started, "load() must be called after init()!"
+        assert self._has_initialized, "load() must be called after init()!"
         if not self._is_local:
             path = self._get_cloud_path()
         return torch.load(path, *args, **kwargs)
@@ -295,7 +295,7 @@ class TrainingManager:
         Returns: None
 
         """
-        assert self._has_training_started, "save() must be called after init()!"
+        assert self._has_initialized, "save() must be called after init()!"
         assert not self._is_saved, "You cannot call `pf.save()` twice within a training step."
         assert self._is_step_started, "You can only call `pf.save()` within a training step scope."
         if async_save:
