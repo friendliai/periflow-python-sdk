@@ -277,7 +277,6 @@ class TrainingManager:
         Returns: Loaded object
 
         """
-        assert self._has_initialized, "load() must be called after init()!"
         if not self._is_local and "CKPT_DIR" in os.environ:
             path = self._get_cloud_path()
         return torch.load(path, *args, **kwargs)
