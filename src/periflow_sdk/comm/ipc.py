@@ -1,19 +1,15 @@
 """ IPC utils
 """
 
-import asyncio
 import json
 import os
 import select
 import struct
 from enum import Enum
-from contextlib import suppress
-from concurrent.futures.thread import ThreadPoolExecutor
-from concurrent.futures import CancelledError
-from typing import List, Optional
+from typing import Optional
 import logging
 
-from .errors import (
+from periflow_sdk.comm.errors import (
     IpcChannelIOError,
     IpcChannelNotOpenedError,
     IpcTimeoutException,
@@ -184,84 +180,6 @@ class IpcChannel:
     @property
     def local_rank(self) -> int:
         return self._local_rank
-
-
-class IpcChannelBundle:
-    """ A set of IPC channels between FTModule and training managers
-    """
-    def __init__(self, purpose: IpcCommPurpose, num_devices: int):
-        self._thread_pool = ThreadPoolExecutor(max_workers=8, thread_name_prefix="IpcChannelThreadPool")
-        self._ipc_channels = []
-        for local_rank in range(num_devices):
-            ipc_channel = get_default_ipc_channel(purpose, local_rank)
-            self._ipc_channels.append(ipc_channel)
-
-    async def read_all(self, timeout: Optional[float] = None) -> List[dict]:
-        """ Read all messages from the FIFOs under management.
-        The call of this method will wait for the read for the specified length of time in milliseconds.
-        If timeout is omitted, negative, or None, the call will block until it reads all the messages from every FIFO.
-        """
-        periflow_logger.debug("now read all")
-        return await self._execute_in_thread_pool("read", timeout)
-
-    async def write_all(self, msg: dict):
-        """ Write all messages to the FIFOs under management.
-        """
-        await self._execute_in_thread_pool("write", msg)
-
-    async def open_all(self):
-        """ Open all FIFOs under management.
-        """
-        await self._execute_in_thread_pool("open")
-
-    async def close_all(self):
-        """ Close all FIFOs under management.
-        """
-        await self._execute_in_thread_pool("close")
-
-    async def remove_all(self):
-        """ Remove all FIFOs under management.
-        """
-        await self._execute_in_thread_pool("remove")
-
-    async def _execute_in_thread_pool(self, method_name: str, *args):
-        """ A helper function for resolving futures.
-        If one of the futures raises an exception, the other futures are cancelled together.
-
-        Arguments:
-            - method_name: A method name of IpcChannel class.
-
-        Return:
-            - A list of results.
-        """
-        futures = []
-        for ipc_channel in self._ipc_channels:
-            futures.append(
-                asyncio.get_running_loop().run_in_executor(
-                    self._thread_pool, getattr(ipc_channel, method_name), *args
-                )
-            )
-
-        try:
-            return await asyncio.gather(*futures)
-        except Exception as exc:
-            periflow_logger.error(f"Exception: ({exc}) occurs.")
-            for future in futures:
-                future.cancel()
-            for future in futures:
-                with suppress(CancelledError):
-                    future.result()
-
-    async def __aenter__(self):
-        await self.open_all()
-        return self
-
-    async def __aexit__(self, exc_type, exc_value, traceback):
-        await self.close_all()
-
-    @property
-    def fifonames(self) -> List[str]:
-        return [ipc_channel.fifoname for ipc_channel in self._ipc_channels]
 
 
 def _encode_msg_size(size: int) -> bytes:

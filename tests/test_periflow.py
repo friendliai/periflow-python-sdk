@@ -4,7 +4,7 @@
 import os
 import time
 import json
-from concurrent.futures import ThreadPoolExecutor, TimeoutError
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Dict
 
@@ -29,15 +29,16 @@ WORLD_SIZE = 16
 
 
 @pytest.fixture
-def local_manager():
-    manager = TrainingManager(log_file_name=LOG_FILE_NAME, is_local=True, teardown_at_exit=False)
+def local_manager(monkeypatch):
+    monkeypatch.setenv("PERIFLOW_ENABLED", "0")
+    manager = TrainingManager(teardown_at_exit=False)
     manager.init(total_train_steps=TOTAL_TRAIN_STEPS, local_log_name=LOG_FILE_NAME)
     return manager
 
 
 @pytest.fixture
 def cloud_manager(monkeypatch):
-    manager = TrainingManager(is_local=False, teardown_at_exit=False)
+    monkeypatch.setenv("PERIFLOW_ENABLED", "1")
     monkeypatch.setenv("CKPT_DIR", CLOUD_CKPT_DIR)
     monkeypatch.setenv("DP_DEGREE", str(DP_DEGREE))
     monkeypatch.setenv("MP_DEGREE", str(MP_DEGREE))
@@ -48,13 +49,14 @@ def cloud_manager(monkeypatch):
     monkeypatch.setenv("NUM_NODES", str(NUM_NODES))
     monkeypatch.setenv("WORLD_SIZE", str(WORLD_SIZE))
     monkeypatch.setenv("PROCESSED_ITERS", str(0))
+    manager = TrainingManager(teardown_at_exit=False)
     manager.init(total_train_steps=TOTAL_TRAIN_STEPS)
     return manager
 
 
 @pytest.fixture
 def cloud_manager_v2(monkeypatch):
-    manager = TrainingManager(is_local=False, teardown_at_exit=False)
+    monkeypatch.setenv("PERIFLOW_ENABLED", "1")
     monkeypatch.setenv("CKPT_DIR", CLOUD_CKPT_DIR)
     monkeypatch.setenv("DP_DEGREE", str(DP_DEGREE))
     monkeypatch.setenv("MP_DEGREE", str(MP_DEGREE))
@@ -65,6 +67,7 @@ def cloud_manager_v2(monkeypatch):
     monkeypatch.setenv("NUM_NODES", str(NUM_NODES))
     monkeypatch.setenv("WORLD_SIZE", str(WORLD_SIZE))
     monkeypatch.setenv("PROCESSED_ITERS", str(5))
+    manager = TrainingManager(teardown_at_exit=False)
     manager.init(total_train_steps=TOTAL_TRAIN_STEPS)
     return manager
 
@@ -77,7 +80,7 @@ def _send_ack_on_receive(step_info_channel: IpcChannel, ack_channel: IpcChannel)
 
 def _valid_step_info(msg: Dict):
     return "step" in msg \
-        and "is_last_step" in msg \
+        and "last_step" in msg \
         and "step_time" in msg \
         and "saved" in msg \
         and "save_type" in msg \
@@ -101,7 +104,7 @@ def test_step(cloud_manager):
             stat_info_msg = f.result()
             assert _valid_step_info(stat_info_msg)
             assert stat_info_msg["step"] == i + 1
-            assert not stat_info_msg["is_last_step"]
+            assert stat_info_msg["last_step"] == TOTAL_TRAIN_STEPS
 
     with ThreadPoolExecutor(max_workers=1) as executor:
         f = executor.submit(_send_ack_on_receive, server_step_channel, server_ack_channel)
@@ -110,7 +113,7 @@ def test_step(cloud_manager):
         cloud_manager.end_step()
         stat_info_msg = f.result()
         assert _valid_step_info(stat_info_msg)
-        assert stat_info_msg["is_last_step"]
+        assert stat_info_msg["last_step"] == TOTAL_TRAIN_STEPS
 
     server_step_channel.close()
     server_ack_channel.close()

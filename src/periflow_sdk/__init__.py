@@ -1,6 +1,5 @@
 """The periflow training manager module.
 """
-
 import atexit
 import copy
 import json
@@ -34,32 +33,72 @@ class TrainingManager:
 
     """ The training wrapper class for general PyTorch training code.
     """
-    def __init__(self,
-                 log_file_name: Optional[str] = None,
-                 is_local: Optional[bool] = None,
-                 teardown_at_exit: bool = True):
-        if is_local is None:
-            self._is_local = os.environ.get("PERIFLOW_ENABLED") != "1"
-        else:
-            self._is_local = is_local
+    def __init__(self, teardown_at_exit: bool = True):
+        self._is_local = os.environ.get("PERIFLOW_ENABLED") != "1"
+
         self._total_train_steps = None
         self._cur_step = -1
+        self._is_saved = False
+        self._save_method = SaveType.NORMAL
+        self._checkpoint_path = None
+        self._step_start_time = None
+        self._teardown_at_exit = teardown_at_exit
+        self._emergency_save_step = None
+        self._has_initialized = False
+        self._dist_config = None
+
+        # IPC Channels
         self._step_info_ipc_channel = None
         self._ack_ipc_channel = None
         self._emergency_save_ipc_channel = None
         self._metric_ipc_channel = None
         self._wait_emergency_save_thread = None
-        self._local_rank = None
-        self._is_saved = False
-        self._save_method = SaveType.NORMAL
-        self._checkpoint_path = None
-        self._step_start_time = None
+
+        # Used only for local mode
         self._log_path = None
         self._has_locally_logged = False
-        self._teardown_at_exit = teardown_at_exit
-        self._emergency_save_step = None
-        self._has_initialized = False
-        self._dist_config = None
+
+        if not self._is_local:
+            periflow_logger.debug("Periflow SDK is working in cloud mode.")
+
+            # Environment variable check.
+            required_env_vars = ["RANK",
+                                 "WORLD_SIZE",
+                                 "NODE_RANK",
+                                 "NUM_NODES",
+                                 "PROCESSED_ITERS"]
+
+            for env_var in required_env_vars:
+                assert env_var in os.environ, f"Environment variable '{env_var}' should be set in cloud mode!"
+
+            # Configure dist info
+            world_size = int(os.environ["WORLD_SIZE"])
+            rank = int(os.environ["RANK"])
+            num_nodes = int(os.environ["NUM_NODES"])
+            ensure_divisibility(world_size, num_nodes)
+            devices_per_node = world_size // num_nodes
+            local_rank = rank % devices_per_node
+            self._cur_step = int(os.environ["PROCESSED_ITERS"])
+            self._dist_config = DistributeConfig(local_rank=local_rank, rank=rank)
+            ensure_valid_parallelism_config(self._dist_config)
+
+            # IPC Channels
+            self._step_info_ipc_channel = get_default_ipc_channel(purpose=IpcCommPurpose.STEP_INFO,
+                                                                  local_rank=local_rank)
+            self._ack_ipc_channel = get_default_ipc_channel(purpose=IpcCommPurpose.ACK,
+                                                            local_rank=local_rank)
+            self._emergency_save_ipc_channel = get_default_ipc_channel(purpose=IpcCommPurpose.EMERGENCY_SAVE,
+                                                                       local_rank=local_rank)
+            self._metric_ipc_channel = get_default_ipc_channel(purpose=IpcCommPurpose.METRIC,
+                                                               local_rank=local_rank)
+            self._step_info_ipc_channel.open()
+            self._ack_ipc_channel.open()
+            self._emergency_save_ipc_channel.open()
+            self._metric_ipc_channel.open()
+
+            # Start a thread waiting for emergency save request.
+            self._wait_emergency_save_thread = Thread(target=self._wait_for_emergency_save_request, daemon=True)
+            self._wait_emergency_save_thread.start()
 
     @property
     def _is_step_started(self) -> bool:
@@ -87,48 +126,6 @@ class TrainingManager:
                     self._log_path = Path(f"./periflow_trainer_{int(time.time())}_{rank}.log")
                 else:
                     self._log_path = Path(f"./periflow_trainer_{int(time.time())}.log")
-            self._local_rank = None
-        else:
-            periflow_logger.debug("Periflow SDK is working in cloud mode.")
-
-            # Environment variable check.
-            required_env_vars = ["RANK",
-                                 "WORLD_SIZE",
-                                 "NODE_RANK",
-                                 "NUM_NODES",
-                                 "PROCESSED_ITERS"]
-
-            for env_var in required_env_vars:
-                assert env_var in os.environ, f"Environment variable '{env_var}' should be set in cloud mode!"
-
-            # Configure dist info
-            world_size = int(os.environ["WORLD_SIZE"])
-            rank = int(os.environ["RANK"])
-            num_nodes = int(os.environ["NUM_NODES"])
-            ensure_divisibility(world_size, num_nodes)
-            devices_per_node = world_size // num_nodes
-            local_rank = rank % devices_per_node
-            self._cur_step = int(os.environ.get("PROCESSED_ITERS"))
-            self._dist_config = DistributeConfig(local_rank=local_rank, rank=rank)
-            ensure_valid_parallelism_config(self._dist_config)
-
-            # IPC Channels
-            self._step_info_ipc_channel = get_default_ipc_channel(purpose=IpcCommPurpose.STEP_INFO,
-                                                                  local_rank=local_rank)
-            self._ack_ipc_channel = get_default_ipc_channel(purpose=IpcCommPurpose.ACK,
-                                                            local_rank=local_rank)
-            self._emergency_save_ipc_channel = get_default_ipc_channel(purpose=IpcCommPurpose.EMERGENCY_SAVE,
-                                                                       local_rank=local_rank)
-            self._metric_ipc_channel = get_default_ipc_channel(purpose=IpcCommPurpose.METRIC,
-                                                               local_rank=local_rank)
-            self._step_info_ipc_channel.open()
-            self._ack_ipc_channel.open()
-            self._emergency_save_ipc_channel.open()
-            self._metric_ipc_channel.open()
-
-            # Start a thread waiting for emergency save request.
-            self._wait_emergency_save_thread = Thread(target=self._wait_for_emergency_save_request, daemon=True)
-            self._wait_emergency_save_thread.start()
 
         if self._teardown_at_exit:
             # teardown will be called at exit of the program.
@@ -189,7 +186,7 @@ class TrainingManager:
             try:
                 msg = {
                     "step": self._cur_step,
-                    "is_last_step": self._cur_step == self._total_train_steps,
+                    "last_step": self._total_train_steps,
                     "step_time": step_time,
                     "saved": self._is_saved,
                     "save_type": self._save_method,
@@ -235,6 +232,7 @@ class TrainingManager:
         return self._emergency_save_step == self._cur_step
 
     def _local_log(self, msg):
+        assert self._log_path is not None
         mode = "a" if self._has_locally_logged else "w"
         with self._log_path.open(mode=mode) as log_file:
             log_file.write(f"{json.dumps(msg)}\n")
