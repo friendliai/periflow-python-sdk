@@ -80,7 +80,6 @@ def _send_ack_on_receive(step_info_channel: IpcChannel, ack_channel: IpcChannel)
 
 def _valid_step_info(msg: Dict):
     return "step" in msg \
-        and "last_step" in msg \
         and "step_time" in msg \
         and "saved" in msg \
         and "save_type" in msg \
@@ -104,7 +103,6 @@ def test_step(cloud_manager):
             stat_info_msg = f.result()
             assert _valid_step_info(stat_info_msg)
             assert stat_info_msg["step"] == i + 1
-            assert stat_info_msg["last_step"] == TOTAL_TRAIN_STEPS
 
     with ThreadPoolExecutor(max_workers=1) as executor:
         f = executor.submit(_send_ack_on_receive, server_step_channel, server_ack_channel)
@@ -113,7 +111,6 @@ def test_step(cloud_manager):
         cloud_manager.end_step()
         stat_info_msg = f.result()
         assert _valid_step_info(stat_info_msg)
-        assert stat_info_msg["last_step"] == TOTAL_TRAIN_STEPS
 
     server_step_channel.close()
     server_ack_channel.close()

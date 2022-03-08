@@ -16,7 +16,7 @@ from typing import Dict, Union, Any, Optional
 import torch
 
 from periflow_sdk.comm.errors import IpcTimeoutException, IpcConnectionFailureException
-from periflow_sdk.comm.ipc import IpcCommPurpose, CommResultStatus, get_default_ipc_channel
+from periflow_sdk.comm.ipc import IpcCommPurpose, CommResultStatus, get_default_ipc_channel, IpcChannel
 from periflow_sdk.utils import ensure_valid_parallelism_config, ensure_divisibility, DistributeConfig
 
 periflow_logger = logging.getLogger("periflow")
@@ -36,23 +36,20 @@ class TrainingManager:
     def __init__(self, teardown_at_exit: bool = True):
         self._is_local = os.environ.get("PERIFLOW_ENABLED") != "1"
 
-        self._total_train_steps = None
         self._cur_step = -1
         self._is_saved = False
         self._save_method = SaveType.NORMAL
         self._checkpoint_path = None
         self._step_start_time = None
-        self._teardown_at_exit = teardown_at_exit
-        self._emergency_save_step = None
         self._has_initialized = False
         self._dist_config = None
 
         # IPC Channels
-        self._step_info_ipc_channel = None
-        self._ack_ipc_channel = None
-        self._emergency_save_ipc_channel = None
-        self._metric_ipc_channel = None
+        self._ipc_channels: Dict[IpcCommPurpose, IpcChannel] = {}
+
+        # Emergency save
         self._wait_emergency_save_thread = None
+        self._emergency_save_step = None
 
         # Used only for local mode
         self._log_path = None
@@ -83,22 +80,19 @@ class TrainingManager:
             ensure_valid_parallelism_config(self._dist_config)
 
             # IPC Channels
-            self._step_info_ipc_channel = get_default_ipc_channel(purpose=IpcCommPurpose.STEP_INFO,
-                                                                  local_rank=local_rank)
-            self._ack_ipc_channel = get_default_ipc_channel(purpose=IpcCommPurpose.ACK,
-                                                            local_rank=local_rank)
-            self._emergency_save_ipc_channel = get_default_ipc_channel(purpose=IpcCommPurpose.EMERGENCY_SAVE,
-                                                                       local_rank=local_rank)
-            self._metric_ipc_channel = get_default_ipc_channel(purpose=IpcCommPurpose.METRIC,
-                                                               local_rank=local_rank)
-            self._step_info_ipc_channel.open()
-            self._ack_ipc_channel.open()
-            self._emergency_save_ipc_channel.open()
-            self._metric_ipc_channel.open()
+            self._ipc_channels: Dict[IpcCommPurpose, IpcChannel] = {
+                k: get_default_ipc_channel(purpose=k, local_rank=local_rank) for k in IpcCommPurpose
+            }
+            for ipc_channel in self._ipc_channels.values():
+                ipc_channel.open()
 
             # Start a thread waiting for emergency save request.
             self._wait_emergency_save_thread = Thread(target=self._wait_for_emergency_save_request, daemon=True)
             self._wait_emergency_save_thread.start()
+
+        if teardown_at_exit:
+            # teardown will be called at exit of the program.
+            atexit.register(self._teardown)
 
     @property
     def _is_step_started(self) -> bool:
@@ -113,8 +107,6 @@ class TrainingManager:
             - total_train_steps: The number of total training steps
             - local_rank: The local rank of this training process
         """
-        self._total_train_steps = total_train_steps
-
         if self._is_local:
             periflow_logger.debug("Periflow SDK is working in local mode.")
             if local_log_name is not None:
@@ -126,10 +118,10 @@ class TrainingManager:
                     self._log_path = Path(f"./periflow_trainer_{int(time.time())}_{rank}.log")
                 else:
                     self._log_path = Path(f"./periflow_trainer_{int(time.time())}.log")
-
-        if self._teardown_at_exit:
-            # teardown will be called at exit of the program.
-            atexit.register(self._teardown)
+        else:
+            self._ipc_channels[IpcCommPurpose.LAST_STEP].write({
+                "step": total_train_steps
+            })
 
         self._has_initialized = True
 
@@ -137,22 +129,16 @@ class TrainingManager:
         """ Clean up resources.
         """
         if not self._is_local:
-            self._step_info_ipc_channel.close()
-            self._ack_ipc_channel.close()
-            self._emergency_save_ipc_channel.close()
-            self._metric_ipc_channel.close()
-
-            self._step_info_ipc_channel.remove()
-            self._ack_ipc_channel.remove()
-            self._emergency_save_ipc_channel.remove()
-            self._metric_ipc_channel.remove()
+            for ipc_channel in self._ipc_channels.values():
+                ipc_channel.close()
+                ipc_channel.remove()
 
     def _wait_for_emergency_save_request(self) -> None:
         """ Wait for the emergency save request from the IPC channel.
         Do nothing for local mode.
         """
         try:
-            msg = self._emergency_save_ipc_channel.read(timeout=None)
+            msg = self._ipc_channels[IpcCommPurpose.EMERGENCY_SAVE].read(timeout=None)
         except (IpcTimeoutException, IpcConnectionFailureException):
             pass
         else:
@@ -186,18 +172,17 @@ class TrainingManager:
             try:
                 msg = {
                     "step": self._cur_step,
-                    "last_step": self._total_train_steps,
                     "step_time": step_time,
                     "saved": self._is_saved,
                     "save_type": self._save_method,
                     "checkpoint_path": self._checkpoint_path
                 }
                 periflow_logger.debug(f"IPC WR || send training stat: {msg}")
-                self._step_info_ipc_channel.write(msg)
+                self._ipc_channels[IpcCommPurpose.STEP_INFO].write(msg)
 
                 # Wait for ack.
                 periflow_logger.debug("Wait for ACK.")
-                ack = self._ack_ipc_channel.read(timeout=None)
+                ack = self._ipc_channels[IpcCommPurpose.ACK].read(timeout=None)
                 periflow_logger.debug("ACK received.")
                 if ack["status"] != CommResultStatus.SUCCESS:
                     raise RuntimeError(f"Invalid IPC message from FTModule: {ack}")
@@ -256,7 +241,7 @@ class TrainingManager:
         if self._is_local:
             self._local_log(new_msg)
         else:
-            self._metric_ipc_channel.write(new_msg)
+            self._ipc_channels[IpcCommPurpose.METRIC].write(new_msg)
 
     def _get_cloud_path(self) -> Path:
         mp_rank = self._dist_config.mp_rank
