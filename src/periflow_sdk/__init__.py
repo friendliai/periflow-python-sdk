@@ -252,6 +252,11 @@ class TrainingManager:
             path.parent.mkdir(parents=True, exist_ok=True)
         return path
 
+    def is_checkpoint_exist(self, path: Union[os.PathLike, str]) -> bool:
+        if not self._is_local and "CKPT_DIR" in os.environ:
+            path = self._get_cloud_path()
+        return os.path.exists(path)
+
     def load(self, path: Union[os.PathLike, str], *args, **kwargs) -> Any:
         """
         Load the saved object from persistent storage. In local mode, this is same as `torch.save()`.
