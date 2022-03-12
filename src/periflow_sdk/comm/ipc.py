@@ -1,22 +1,19 @@
 """ IPC utils
 """
 
+import asyncio
+import errno
 import json
 import os
-import select
 import struct
 from enum import Enum
 from typing import Optional
-import logging
 
 from periflow_sdk.comm.errors import (
     IpcChannelIOError,
     IpcChannelNotOpenedError,
-    IpcTimeoutException,
-    IpcConnectionFailureException,
+    IpcConnectionError,
 )
-
-periflow_logger = logging.getLogger("periflow")
 
 
 class CommResultStatus(str, Enum):
@@ -26,14 +23,14 @@ class CommResultStatus(str, Enum):
 
 class IpcCommPurpose(str, Enum):
     STEP_INFO = "STEP_INFO"
+    METRIC = "METRIC"
     ACK = "ACK"
     EMERGENCY_SAVE = "EMERGENCY_SAVE"
-    METRIC = "METRIC"
     LAST_STEP = "LAST_STEP"
 
 
 class FifoBase:
-    """ Abstraction for FIFO
+    """Abstraction for FIFO
     """
     def __init__(self, fifoname: str):
         self._fifo = None
@@ -59,7 +56,9 @@ class FifoBase:
     def remove(self):
         if self._fifo is not None:
             raise IpcChannelIOError("You should close the file first with FifoBase.close().")
-        os.remove(self._fifoname)
+
+        if os.path.exists(self._fifoname):
+            os.remove(self._fifoname)
 
 
 class FifoReader(FifoBase):
@@ -70,28 +69,46 @@ class FifoReader(FifoBase):
         # Read-only and non-blocking
         return os.O_RDONLY | os.O_NONBLOCK
 
-    def read(self, timeout: Optional[float] = None) -> Optional[bytes]:
-        """ Read a message from the FIFO.
-        If timeout is given, it specifies the length of time in milliseconds which the system will wait for events
-        before returning. If timeout is omitted, negative, or None, the call will block until there is an event for the
-        poll object.
+    async def read(self) -> bytes:
+        """Implementation of reading msg from the named pipe
         """
-        # Create a polling object to monitor the fifo for new message.
-        poll = select.poll()
-        poll.register(self._fifo, select.POLLIN)
-        try:
-            if (self._fifo, select.POLLIN) in poll.poll(timeout):
-                msg = _get_message(self._fifo)
-                return msg
+        # NOTE (TB): not compatible with Window OS
+        # https://docs.python.org/3.8/library/asyncio-platforms.html#asyncio-platform-support
+        assert self._fifo is not None
+        loop = asyncio.get_running_loop()
+        msg = bytearray()
+        msg_size = None
 
-            if self._fifo is not None:
-                raise IpcTimeoutException
+        def _read(future):
+            nonlocal msg_size
+            try:
+                if msg_size is None:
+                    # read size first
+                    msg_size_bytes = os.read(self._fifo, 4)
+                    msg_size = _decode_msg_size(msg_size_bytes)
 
-            # TODO(TB): raise error, not None
-            return None
-        finally:
-            if self._fifo is not None:
-                poll.unregister(self._fifo)
+                msg_chunk = os.read(self._fifo, msg_size)
+            except OSError as exc:
+                loop.remove_reader(self._fifo)
+                if exc.errno == errno.EAGAIN:
+                    future.set_result(b"")
+                else:
+                    future.set_exception(IpcConnectionError(str(exc)))
+            except Exception as exc:  # pylint: disable=broad-except
+                loop.remove_reader(self._fifo)
+                future.set_exception(IpcConnectionError(str(exc)))
+            else:
+                loop.remove_reader(self._fifo)
+                future.set_result(msg_chunk)
+
+        while msg_size is None or msg_size > 0:
+            future = loop.create_future()
+            loop.add_reader(self._fifo, _read, future)
+            msg_chunk = await future
+            msg += msg_chunk
+            msg_size -= len(msg_chunk)
+
+        return bytes(msg)
 
 
 class FifoWriter(FifoBase):
@@ -99,17 +116,43 @@ class FifoWriter(FifoBase):
     """
     @property
     def mode(self):
-        return os.O_WRONLY
+        return os.O_WRONLY | os.O_NONBLOCK
 
-    def write(self, content: bytes):
-        """ Write a message to the FIFO.
+    async def write(self, content: bytes):
+        """Implementation of writing msg into named pipe
         """
+        assert self._fifo is not None
+        loop = asyncio.get_running_loop()
+        written_size = 0
         msg = _create_msg(content)
-        os.write(self._fifo, msg)
+        msg_size = len(msg)
+
+        def _write(future, m):
+            try:
+                wrote = os.write(self._fifo, m)
+            except OSError as exc:
+                loop.remove_writer(self._fifo)
+                if exc.errno == errno.EAGAIN:
+                    future.set_result(0)
+                else:
+                    future.set_exception(IpcConnectionError(str(exc)))
+            except Exception as exc:  # pylint: disable=broad-except
+                loop.remove_writer(self._fifo)
+                future.set_exception(IpcConnectionError(str(exc)))
+            else:
+                loop.remove_writer(self._fifo)
+                future.set_result(wrote)
+
+        while written_size < msg_size:
+            future = loop.create_future()
+            loop.add_writer(self._fifo, _write, future, msg)
+            chunk_size = await future
+            written_size += chunk_size
+            msg = msg[chunk_size:]
 
 
 class IpcChannel:
-    """ The IPC Channel for communication between processes
+    """IPC communication channel
     """
     def __init__(self,
                  fifoname: str,
@@ -120,26 +163,21 @@ class IpcChannel:
         self._writer = FifoWriter(fifoname)
         self._opened = False
 
-    def read(self, timeout: Optional[float] = None) -> dict:
+    async def read(self) -> dict:
         if not self._opened:
-            msg = "IPC channel is not open. Call open() or __enter__ first."
-            raise IpcChannelNotOpenedError(msg)
+            error_msg = "IPC channel is not open. Call open() or __enter__ first."
+            raise IpcChannelNotOpenedError(error_msg)
 
-        msg = self._reader.read(timeout=timeout)
-        if msg is None or msg == b"":
-            raise IpcConnectionFailureException
+        msg = await self._reader.read()
         return json.loads(msg.decode())
 
-    def write(self, msg: dict):
+    async def write(self, msg: dict):
         if not self._opened:
-            msg = "IPC channel is not open. Call open() or __enter__ first."
-            raise IpcChannelNotOpenedError(msg)
+            error_msg = "IPC channel is not open. Call open() or __enter__ first."
+            raise IpcChannelNotOpenedError(error_msg)
 
-        msg = json.dumps(msg).encode()
-        try:
-            self._writer.write(msg)
-        except BrokenPipeError as broken_pipe_error:
-            raise IpcConnectionFailureException from broken_pipe_error
+        bytes_msg = json.dumps(msg).encode()
+        await self._writer.write(bytes_msg)
 
     def open(self):
         if self._opened:
@@ -179,8 +217,12 @@ class IpcChannel:
         return self._fifoname
 
     @property
-    def local_rank(self) -> int:
+    def local_rank(self) -> Optional[int]:
         return self._local_rank
+
+    @property
+    def closed(self) -> bool:
+        return not self._opened
 
 
 def _encode_msg_size(size: int) -> bytes:
@@ -206,16 +248,6 @@ def _create_msg(content: bytes) -> bytes:
     return _encode_msg_size(size) + content
 
 
-def _get_message(fifo: int) -> bytes:
-    """ Get a message from the named pipe.
-    """
-    msg_size_bytes = os.read(fifo, 4)
-    msg_size = _decode_msg_size(msg_size_bytes)
-    msg_content = os.read(fifo, msg_size)
-
-    return msg_content
-
-
 def _try_mkfifo(fifoname: str):
     """ Create a FIFO (a named pipe) named path.
     """
@@ -230,12 +262,12 @@ def get_default_ipc_channel(purpose: IpcCommPurpose, local_rank: int) -> IpcChan
     """
     if purpose == IpcCommPurpose.STEP_INFO:
         fifoname = f"/tmp/periflow_step_info_ipc_fifo_{local_rank}"
+    elif purpose == IpcCommPurpose.METRIC:
+        fifoname = f"/tmp/periflow_metric_ipc_fifo_{local_rank}"
     elif purpose == IpcCommPurpose.ACK:
         fifoname = f"/tmp/periflow_ack_ipc_fifo_{local_rank}"
     elif purpose == IpcCommPurpose.EMERGENCY_SAVE:
         fifoname = f"/tmp/periflow_emergency_save_ipc_fifo_{local_rank}"
-    elif purpose == IpcCommPurpose.METRIC:
-        fifoname = f"/tmp/periflow_metric_ipc_fifo_{local_rank}"
     elif purpose == IpcCommPurpose.LAST_STEP:
         fifoname = f"/tmp/periflow_last_step_ipc_fifo_{local_rank}"
     else:

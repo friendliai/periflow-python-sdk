@@ -5,11 +5,7 @@ class IpcException(Exception):
     pass
 
 
-class IpcTimeoutException(IpcException):
-    pass
-
-
-class IpcConnectionFailureException(IpcException):
+class IpcConnectionError(IpcException):
     pass
 
 

@@ -1,6 +1,6 @@
 """ Unit test module for periflow main
 """
-
+import asyncio
 import os
 import time
 import json
@@ -73,8 +73,8 @@ def cloud_manager_v2(monkeypatch):
 
 
 def _send_ack_on_receive(step_info_channel: IpcChannel, ack_channel: IpcChannel):
-    msg = step_info_channel.read(timeout=5000)
-    ack_channel.write(msg={"status": CommResultStatus.SUCCESS})
+    msg = asyncio.run(step_info_channel.read())
+    asyncio.run(ack_channel.write(msg={"status": CommResultStatus.SUCCESS}))
     return msg
 
 
@@ -307,14 +307,14 @@ def test_cloud_metric(cloud_manager):
     cloud_manager.start_step()
     float_metric = {'some_metric': 1.5}
     cloud_manager.metric(float_metric)
-    result = metric_ipc_channel.read()
+    result = asyncio.run(metric_ipc_channel.read())
     assert "some_metric" in result and result.get("some_metric") == float_metric.get("some_metric")
     assert result.get("step") == 1
     assert result.get("rank") == RANK
     assert result.get("local_rank") == LOCAL_RANK
     string_metric = {'another_metric': "hello"}
     cloud_manager.metric(string_metric)
-    result = metric_ipc_channel.read()
+    result = asyncio.run(metric_ipc_channel.read())
     assert "another_metric" in result and result.get("another_metric") == string_metric.get("another_metric")
     assert result.get("step") == 1
     assert result.get("rank") == RANK
@@ -339,7 +339,7 @@ def test_local_metric(local_manager):
 
 
 def _send_emergency_save(emergency_channel: IpcChannel, step: int):
-    emergency_channel.write({"emergency_save_step": step})
+    asyncio.run(emergency_channel.write({"emergency_save_step": step}))
     return True
 
 
