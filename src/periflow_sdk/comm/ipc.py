@@ -79,7 +79,7 @@ class FifoReader(FifoBase):
         msg = bytearray()
         msg_size = None
 
-        def _read(future):
+        def _read(future: asyncio.Future):
             nonlocal msg_size
             try:
                 if msg_size is None:
@@ -89,17 +89,16 @@ class FifoReader(FifoBase):
 
                 msg_chunk = os.read(self._fifo, msg_size)
             except OSError as exc:
-                loop.remove_reader(self._fifo)
                 if exc.errno == errno.EAGAIN:
                     future.set_result(b"")
                 else:
                     future.set_exception(IpcConnectionError(str(exc)))
             except Exception as exc:  # pylint: disable=broad-except
-                loop.remove_reader(self._fifo)
                 future.set_exception(IpcConnectionError(str(exc)))
             else:
-                loop.remove_reader(self._fifo)
                 future.set_result(msg_chunk)
+            finally:
+                loop.remove_reader(self._fifo)
 
         while msg_size is None or msg_size > 0:
             future = loop.create_future()
@@ -127,21 +126,20 @@ class FifoWriter(FifoBase):
         msg = _create_msg(content)
         msg_size = len(msg)
 
-        def _write(future, m):
+        def _write(future: asyncio.Future, m: bytes):
             try:
                 wrote = os.write(self._fifo, m)
             except OSError as exc:
-                loop.remove_writer(self._fifo)
                 if exc.errno == errno.EAGAIN:
                     future.set_result(0)
                 else:
                     future.set_exception(IpcConnectionError(str(exc)))
             except Exception as exc:  # pylint: disable=broad-except
-                loop.remove_writer(self._fifo)
                 future.set_exception(IpcConnectionError(str(exc)))
             else:
-                loop.remove_writer(self._fifo)
                 future.set_result(wrote)
+            finally:
+                loop.remove_writer(self._fifo)
 
         while written_size < msg_size:
             future = loop.create_future()

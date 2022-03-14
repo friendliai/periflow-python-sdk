@@ -354,6 +354,7 @@ def test_emergency_save(cloud_manager):
     server_ack_channel.open()
     server_emergency_channel.open()
     cloud_manager.start_step()
+
     with ThreadPoolExecutor(max_workers=1) as executor:
         f = executor.submit(_send_emergency_save, server_emergency_channel, 2)
         while True:
@@ -371,15 +372,6 @@ def test_emergency_save(cloud_manager):
         cloud_manager.end_step()
 
     cloud_manager.start_step()
-    with ThreadPoolExecutor(max_workers=1) as executor:
-        f = executor.submit(_send_emergency_save, server_emergency_channel, 2)
-        while True:
-            try:
-                f.result(timeout=100)
-            except TimeoutError:
-                pass
-            else:
-                break
     time.sleep(0.1)
     assert cloud_manager.is_emergency_save()
 

@@ -16,7 +16,7 @@ from typing import Dict, Union, Any, Optional
 
 import torch
 
-from periflow_sdk.comm.errors import IpcConnectionError
+from periflow_sdk.comm.errors import IpcConnectionError, IpcChannelNotOpenedError
 from periflow_sdk.comm.ipc import IpcCommPurpose, CommResultStatus, get_default_ipc_channel, IpcChannel
 from periflow_sdk.utils import ensure_valid_parallelism_config, ensure_divisibility, DistributeConfig
 
@@ -141,7 +141,7 @@ class TrainingManager:
         """
         try:
             msg = asyncio.run(self._ipc_channels[IpcCommPurpose.EMERGENCY_SAVE].read())
-        except IpcConnectionError:
+        except (IpcConnectionError, IpcChannelNotOpenedError):
             pass
         else:
             self._emergency_save_step = msg['emergency_save_step']
