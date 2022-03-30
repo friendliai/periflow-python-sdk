@@ -120,6 +120,7 @@ class TrainingManager:
                 else:
                     self._log_path = Path(f"./periflow_trainer_{int(time.time())}.log")
         else:
+            assert total_train_steps is not None, "last step is None"
             asyncio.run(
                 self._ipc_channels[IpcCommPurpose.LAST_STEP].write({
                     "step": total_train_steps
@@ -176,7 +177,7 @@ class TrainingManager:
                     "step": self._cur_step,
                     "step_time": step_time,
                     "saved": self._is_saved,
-                    "save_type": self._save_method,
+                    "save_type": None if not self._is_saved else self._save_method,
                     "checkpoint_path": self._checkpoint_path
                 }
                 periflow_logger.debug(f"IPC WR || send training stat: {msg}")
