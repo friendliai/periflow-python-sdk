@@ -247,19 +247,19 @@ class TrainingManager:
         else:
             asyncio.run(self._ipc_channels[IpcCommPurpose.METRIC].write(new_msg))
 
-    def _get_cloud_path(self) -> Path:
+    def _get_cloud_path(self, create_if_not_exist=True) -> Path:
         assert self._dist_config is not None
         mp_rank = self._dist_config.mp_rank
         pp_rank = self._dist_config.pp_rank
         path = Path(os.environ["CKPT_DIR"]) / "iter_{:07d}/mp_rank_{:02d}_{:03d}".format(
             self._cur_step, mp_rank, pp_rank) / CKPT_FILE_NAME
-        if not path.parent.exists():
+        if not path.parent.exists() and create_if_not_exist:
             path.parent.mkdir(parents=True, exist_ok=True)
         return path
 
     def is_checkpoint_exist(self, path: Union[os.PathLike, str]) -> bool:
         if not self._is_local and "CKPT_DIR" in os.environ:
-            path = self._get_cloud_path()
+            path = self._get_cloud_path(create_if_not_exist=False)
         return os.path.exists(path)
 
     def load(self, path: Union[os.PathLike, str], *args, **kwargs) -> Any:
