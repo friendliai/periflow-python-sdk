@@ -273,7 +273,7 @@ class TrainingManager:
 
         """
         if not self._is_local and "CKPT_DIR" in os.environ:
-            path = self._get_cloud_path()
+            path = self._get_cloud_path(create_if_not_exist=False)
         return torch.load(path, *args, **kwargs)
 
     def save(self, obj, path: Union[os.PathLike, str], async_save: bool = False) -> None:
