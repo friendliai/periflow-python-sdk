@@ -247,7 +247,7 @@ class TrainingManager:
         else:
             asyncio.run(self._ipc_channels[IpcCommPurpose.METRIC].write(new_msg))
 
-    def _get_cloud_path(self, create_if_not_exist=True) -> Path:
+    def _get_cloud_path(self, create_if_not_exist: bool = True) -> Path:
         assert self._dist_config is not None
         mp_rank = self._dist_config.mp_rank
         pp_rank = self._dist_config.pp_rank
