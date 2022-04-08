@@ -9,25 +9,26 @@ import os
 import sys
 import time
 from contextlib import contextmanager
-from enum import Enum
 from pathlib import Path
 from threading import Thread
-from typing import Dict, Union, Any, Optional
+from typing import Dict, Union, Any, Optional, BinaryIO, IO
 
 import torch
 
 from periflow_sdk.comm.errors import IpcConnectionError, IpcChannelNotOpenedError
-from periflow_sdk.comm.ipc import IpcCommPurpose, CommResultStatus, get_default_ipc_channel, IpcChannel
-from periflow_sdk.utils import ensure_valid_parallelism_config, ensure_divisibility, DistributeConfig
-
-periflow_logger = logging.getLogger("periflow")
-periflow_logger.setLevel(os.environ.get("PERIFLOW_LOG_LEVEL", "INFO"))
-CKPT_FILE_NAME = "model_optim_rng.pt"
-
-
-class SaveType(str, Enum):
-    NORMAL = "NORMAL"
-    EMERGENCY = "EMERGENCY"
+from periflow_sdk.comm.ipc import (
+    IpcCommPurpose,
+    CommResultStatus,
+    get_default_ipc_channel,
+    IpcChannel
+)
+from periflow_sdk.errors import PeriFlowError, PeriFlowInternalError
+from periflow_sdk.utils import (
+    check_initialized,
+    ensure_divisibility,
+    DistributeConfig,
+    SaveType
+)
 
 
 class TrainingManager:
@@ -35,29 +36,26 @@ class TrainingManager:
     """ The training wrapper class for general PyTorch training code.
     """
     def __init__(self, teardown_at_exit: bool = True):
-        self._is_local = os.environ.get("PERIFLOW_ENABLED") != "1"
+        self.has_initialized: bool = False
 
-        self._cur_step = -1
-        self._is_saved = False
-        self._save_method = SaveType.NORMAL
-        self._checkpoint_path = None
-        self._step_start_time = None
-        self._has_initialized = False
-        self._dist_config = None
+        self._is_local: bool = os.environ.get("PERIFLOW_ENABLED") != "1"
+
+        self._cur_step: int = 0
+        self._save_method: Optional[SaveType] = None
+        self._step_start_time: Optional[float] = None
+        self._dist_config: Optional[DistributeConfig] = None
 
         # IPC Channels
         self._ipc_channels: Dict[IpcCommPurpose, IpcChannel] = {}
 
         # Emergency save
-        self._wait_emergency_save_thread = None
-        self._emergency_save_step = None
+        self._wait_emergency_save_thread: Optional[Thread] = None
+        self._emergency_save_step: Optional[int] = None
 
         # Used only for local mode
-        self._log_path = None
-        self._has_locally_logged = False
+        self._log_path: Optional[Path] = None
 
         if not self._is_local:
-            periflow_logger.debug("Periflow SDK is working in cloud mode.")
 
             # Environment variable check.
             required_env_vars = ["RANK",
@@ -67,7 +65,10 @@ class TrainingManager:
                                  "PROCESSED_ITERS"]
 
             for env_var in required_env_vars:
-                assert env_var in os.environ, f"Environment variable '{env_var}' should be set in cloud mode!"
+                if env_var not in os.environ:
+                    raise PeriFlowInternalError(
+                        f"Environment variable '{env_var}' should be set in cloud mode!."
+                    )
 
             # Configure dist info
             world_size = int(os.environ["WORLD_SIZE"])
@@ -78,7 +79,6 @@ class TrainingManager:
             local_rank = rank % devices_per_node
             self._cur_step = int(os.environ["PROCESSED_ITERS"])
             self._dist_config = DistributeConfig(local_rank=local_rank, rank=rank)
-            ensure_valid_parallelism_config(self._dist_config)
 
             # IPC Channels
             self._ipc_channels: Dict[IpcCommPurpose, IpcChannel] = {
@@ -96,37 +96,19 @@ class TrainingManager:
             atexit.register(self._teardown)
 
     @property
+    def _is_saved(self) -> bool:
+        return self._save_method is not None
+
+    @property
     def _is_step_started(self) -> bool:
         return self._step_start_time is not None
 
-    def init(self,
-             total_train_steps: int,
-             local_log_name: Optional[str] = None) -> None:
-        """ Initialize training manager.
+    @property
+    def _has_locally_logged(self) -> bool:
+        if self._log_path is None:
+            return False
 
-        Arguments:
-            - total_train_steps: The number of total training steps
-            - local_rank: The local rank of this training process
-        """
-        if self._is_local:
-            periflow_logger.debug("Periflow SDK is working in local mode.")
-            if local_log_name is not None:
-                self._log_path = Path(local_log_name)
-            else:
-                if torch.distributed.is_initialized():
-                    # To prevent path overlap among processes, we add rank at the end of the log file name.
-                    rank = torch.distributed.get_rank()
-                    self._log_path = Path(f"./periflow_trainer_{int(time.time())}_{rank}.log")
-                else:
-                    self._log_path = Path(f"./periflow_trainer_{int(time.time())}.log")
-        else:
-            assert total_train_steps is not None, "last step is None"
-            asyncio.run(
-                self._ipc_channels[IpcCommPurpose.LAST_STEP].write({
-                    "step": total_train_steps
-                }))
-
-        self._has_initialized = True
+        return self._log_path.exists()
 
     def _teardown(self) -> None:
         """ Clean up resources.
@@ -147,29 +129,86 @@ class TrainingManager:
         else:
             self._emergency_save_step = msg['emergency_save_step']
 
-    def get_current_step(self) -> int:
-        assert self._has_initialized, "get_current_step() must be called after init()!"
-        return self._cur_step
+    def _overwrite_path(self, path: Union[os.PathLike, str]) -> Path:
+        path = Path(path)
+        filename = path.name
 
+        if not self._is_local and "CKPT_DIR" in os.environ:
+            mp_rank = getattr(self._dist_config, 'mp_rank', 0)
+            pp_rank = getattr(self._dist_config, 'pp_rank', 0)
+
+            path = Path(os.environ["CKPT_DIR"]) / "iter_{:07d}/mp_rank_{:02d}_{:03d}/{}".format(
+                self._cur_step, mp_rank, pp_rank, filename)
+
+        return path
+
+    def _local_log(self, msg):
+        mode = "a" if self._has_locally_logged else "w"
+        with self._log_path.open(mode=mode) as log_file:
+            log_file.write(f"{json.dumps(msg)}\n")
+
+    def init(self,
+             total_train_steps: int,
+             local_log_name: Optional[str] = None) -> None:
+        """Initialize the training manager.
+
+        Args:
+            total_train_steps: The number of total training steps
+            local_log_name: log file name for local mode
+
+        Raises:
+            PeriFlowError: when total_train_steps is not an integer
+        """
+        if self._is_local:
+            if local_log_name is not None:
+                self._log_path = Path(local_log_name)
+            else:
+                if torch.distributed.is_initialized():
+                    # To prevent path overlap among processes, we add rank at the end of the log file name.
+                    rank = torch.distributed.get_rank()
+                    self._log_path = Path(f"./periflow_trainer_{int(time.time())}_{rank}.log")
+                else:
+                    self._log_path = Path(f"./periflow_trainer_{int(time.time())}.log")
+        else:
+            if not isinstance(total_train_steps, int):
+                raise PeriFlowError(f'total_train_steps should be an integer, got {type(total_train_steps)}')
+
+            asyncio.run(
+                self._ipc_channels[IpcCommPurpose.LAST_STEP].write({
+                    "step": total_train_steps
+                }))
+
+        self.has_initialized = True
+
+    @check_initialized
     def start_step(self) -> None:
+        """Start a new training step.
+
+        Raises:
+            PeriFlowError: when the previous step is not ended
         """
-        Start a new training step.
-        Returns: None
-        """
-        assert self._has_initialized, "start_step() must be called after init()!"
-        assert not self._is_step_started, "Existing steps must finish before calling start_step()!"
-        self._step_start_time = time.monotonic()
-        self._is_saved = False
+        if self._is_step_started:
+            raise PeriFlowError(
+                'Step already started. Maybe `end_step` is not called for the previous step?)')
+
+        self._save_method = None
         if not self._is_local:
             self._cur_step += 1
 
+        self._step_start_time = time.monotonic()
+
+    @check_initialized
     def end_step(self) -> None:
+        """Finish the current training step.
+
+        Raises:
+            PeriFlowError: when try to call `end_step` before calling `start_step`
+            PeriFlowInternalError: IPC failed
         """
-        Finish the current training step.
-        Returns: None
-        """
-        assert self._has_initialized, "end_step() must be called after init()!"
-        assert self._is_step_started, "Existing steps must start before calling end_step()!"
+        if not self._is_step_started:
+            raise PeriFlowError(
+                'Cannot call `end_step` before calling `start_step`')
+
         step_time = time.monotonic() - self._step_start_time
         if not self._is_local:
             try:
@@ -177,131 +216,132 @@ class TrainingManager:
                     "step": self._cur_step,
                     "step_time": step_time,
                     "saved": self._is_saved,
-                    "save_type": None if not self._is_saved else self._save_method,
-                    "checkpoint_path": self._checkpoint_path
+                    "save_type": self._save_method,
                 }
-                periflow_logger.debug(f"IPC WR || send training stat: {msg}")
                 asyncio.run(self._ipc_channels[IpcCommPurpose.STEP_INFO].write(msg))
 
                 # Wait for ack.
-                periflow_logger.debug("Wait for ACK.")
                 ack = asyncio.run(self._ipc_channels[IpcCommPurpose.ACK].read())
-                periflow_logger.debug("ACK received.")
                 if ack["status"] != CommResultStatus.SUCCESS:
-                    raise RuntimeError(f"Invalid IPC message from FTModule: {ack}")
+                    raise PeriFlowInternalError(f'Invalid IPC message from FTModule: {ack}')
 
                 # If emergency save is done, terminate the training process.
-                if self._is_saved and self._save_method is SaveType.EMERGENCY:
+                if self._save_method is SaveType.EMERGENCY:
                     sys.exit()
 
-            except IpcConnectionError as ipc_connection_failure:
-                raise RuntimeError("IPC connection between training manager and FTModule is broken.") \
-                    from ipc_connection_failure
+            except IpcConnectionError as e:
+                raise PeriFlowInternalError('IPC connection between training manager and FTModule is broken.') from e
+
         self._step_start_time = None
 
     @contextmanager
     def train_step(self):
-        """
-        The context management wrapper for `start_step` and `end_step`.
-        Returns: None
-        """
+        """Context manager wrapper for `start_step` and `end_step`."""
         self.start_step()
         try:
             yield
         finally:
             self.end_step()
 
+    @check_initialized
     def is_emergency_save(self) -> bool:
+        """Check whether emergency save should be handled or not
+
+        Returns: 'True' if emergency save step is equal to current step, 'False' if not.
         """
-        Informs whether emergency save should be handled this step or not.
-        Returns: 'True' if emergency save is set, 'False' if not.
-        """
-        assert self._has_initialized, "is_emergency_save() must be called after init()!"
         return self._emergency_save_step == self._cur_step
 
-    def _local_log(self, msg):
-        assert self._log_path is not None
-        mode = "a" if self._has_locally_logged else "w"
-        with self._log_path.open(mode=mode) as log_file:
-            log_file.write(f"{json.dumps(msg)}\n")
-        self._has_locally_logged = True
-
+    @check_initialized
     def metric(self, msg: Dict) -> None:
-        """
-        Log a key-value metric dict and send it to Periflow. `step` info is added if not exists.
+        """Log a key-value metric dict and send it to Periflow. `step` info is added if not exists.
         Args:
             msg: A key-value dict containing user-defined metrics.
 
         Returns: None
-
         """
-        assert self._has_initialized, "metric() must be called after init()!"
-        new_msg = msg.copy()
-        if not self._is_local:
-            assert self._dist_config is not None
+        if self._is_local:
+            self._local_log(msg)
+        else:
+            new_msg = msg.copy()
+
             new_msg["step"] = self._cur_step
             new_msg["rank"] = self._dist_config.rank
             new_msg["local_rank"] = self._dist_config.local_rank
-        if self._is_local:
-            self._local_log(new_msg)
-        else:
+
             asyncio.run(self._ipc_channels[IpcCommPurpose.METRIC].write(new_msg))
 
-    def _get_cloud_path(self, create_if_not_exist: bool = True) -> Path:
-        assert self._dist_config is not None
-        mp_rank = self._dist_config.mp_rank
-        pp_rank = self._dist_config.pp_rank
-        path = Path(os.environ["CKPT_DIR"]) / "iter_{:07d}/mp_rank_{:02d}_{:03d}".format(
-            self._cur_step, mp_rank, pp_rank) / CKPT_FILE_NAME
-        if not path.parent.exists() and create_if_not_exist:
-            path.parent.mkdir(parents=True, exist_ok=True)
-        return path
-
     def is_checkpoint_exist(self, path: Union[os.PathLike, str]) -> bool:
-        if not self._is_local and "CKPT_DIR" in os.environ:
-            path = self._get_cloud_path(create_if_not_exist=False)
+        """Check whether the checkpoint file exists or not
+
+        Args:
+            path: Pathlike object which points target checkpoint file
+
+        Returns:
+            'True' if path exist 'False' if not
+        """
+        path = self._overwrite_path(path)
         return os.path.exists(path)
 
-    def load(self, path: Union[os.PathLike, str], *args, **kwargs) -> Any:
-        """
-        Load the saved object from persistent storage. In local mode, this is same as `torch.save()`.
-        In cloud mode, it ignores the 'path' and loads from the cloud path.
+    def load(self, path: Union[os.PathLike, str, BinaryIO, IO[bytes]], *args, **kwargs) -> Any:
+        """Wrapped method of `torch.load`
+
         Args:
             path: The path of target object. Ignored in cloud mode.
+            args: other arguments that will be passed to `torch.load`
+            kwargs: other keyword arguments that will be passed to `torch.load`
 
-        Returns: Loaded object
+        Raises:
+            PeriFlowError: when path is a file-like object
 
+        Returns:
+            Loaded object
         """
-        if not self._is_local and "CKPT_DIR" in os.environ:
-            path = self._get_cloud_path(create_if_not_exist=False)
+        if not isinstance(path, (str, Path)):
+            raise PeriFlowError(
+                f"Invalid argument {path}. pf.load does not support IO object. Use torch.load or pass PathLike object")
+
+        path = self._overwrite_path(path)
         return torch.load(path, *args, **kwargs)
 
-    def save(self, obj, path: Union[os.PathLike, str], async_save: bool = False) -> None:
-        """
-        Save the desired object to persistent storage.
+    @check_initialized
+    def save(self,
+             obj: Any,
+             path: Union[os.PathLike, str, BinaryIO, IO[bytes]],
+             *args,
+             **kwargs):
+        """Wrapped method of `torch.save`
+
         Args:
             obj: Object to be stored
             path: Path to be stored. Ignored in cluster mode.
-            async_save: Save is done asynchronously if true. Currently not supported.
+            args: other arguments that will be passed to `torch.save`
+            kwargs: other keyword arguments that will be passed to `torch.save`
 
-        Returns: None
-
+        Raises:
+            PeriFlowError: when path is a file-like object
         """
-        assert self._has_initialized, "save() must be called after init()!"
-        assert not self._is_saved, "You cannot call `pf.save()` twice within a training step."
-        assert self._is_step_started, "You can only call `pf.save()` within a training step scope."
-        if async_save:
-            raise NotImplementedError("Asynchronous checkpointing is not supported for now.")
-        # Override path in cluster mode.
-        if not self._is_local and "CKPT_DIR" in os.environ:
-            path = self._get_cloud_path()
-        torch.save(obj, path)
-        self._is_saved = True
+        if not isinstance(path, (str, Path)):
+            raise PeriFlowError(
+                f"Invalid argument {path}. pf.save does not support IO object. Use torch.save or pass PathLike object")
+
+        if self._is_saved:
+            raise PeriFlowError(
+                "You cannot call `pf.save()` twice within a training step.")
+
+        if not self._is_step_started:
+            raise PeriFlowError(
+                "You can only call `pf.save()` within a training step scope.")
+
+        path = self._overwrite_path(path)
+        if not path.parent.exists():
+            path.parent.mkdir(parents=True, exist_ok=True)
+
+        torch.save(obj, path, *args, **kwargs)
+
         if self.is_emergency_save():
             self._save_method = SaveType.EMERGENCY
         else:
             self._save_method = SaveType.NORMAL
-        self._checkpoint_path = str(Path(path).resolve())
 
 
 periflow = TrainingManager()

@@ -2,7 +2,7 @@
 """
 import pytest
 
-from periflow_sdk.utils import ensure_divisibility, ensure_valid_parallelism_config, DistributeConfig
+from periflow_sdk.utils import ensure_divisibility, DistributeConfig
 
 
 def test_ensure_divisibility():
@@ -18,9 +18,8 @@ def test_ensure_valid_parallelism_config_some_configs_not_provided(monkeypatch):
     monkeypatch.setenv("PARALLELISM_ORDER", "dp,pp,mp")
     monkeypatch.setenv("WORLD_SIZE", "8")
 
-    dist_config = DistributeConfig(local_rank=0, rank=0)
     with pytest.raises(RuntimeError):
-        ensure_valid_parallelism_config(dist_config)
+        dist_config = DistributeConfig(local_rank=0, rank=0)
 
 
 def test_ensure_valid_parallelism_config1(monkeypatch):
@@ -37,49 +36,41 @@ def test_ensure_valid_parallelism_config1(monkeypatch):
     monkeypatch.setenv("WORLD_SIZE", "8")
 
     dist_config = DistributeConfig(local_rank=0, rank=0)
-    ensure_valid_parallelism_config(dist_config)
     assert dist_config.dp_rank == 0
     assert dist_config.pp_rank == 0
     assert dist_config.mp_rank == 0
 
     dist_config = DistributeConfig(local_rank=0, rank=1)
-    ensure_valid_parallelism_config(dist_config)
     assert dist_config.dp_rank == 0
     assert dist_config.pp_rank == 0
     assert dist_config.mp_rank == 1
 
     dist_config = DistributeConfig(local_rank=0, rank=2)
-    ensure_valid_parallelism_config(dist_config)
     assert dist_config.dp_rank == 0
     assert dist_config.pp_rank == 1
     assert dist_config.mp_rank == 0
 
     dist_config = DistributeConfig(local_rank=0, rank=3)
-    ensure_valid_parallelism_config(dist_config)
     assert dist_config.dp_rank == 0
     assert dist_config.pp_rank == 1
     assert dist_config.mp_rank == 1
 
     dist_config = DistributeConfig(local_rank=0, rank=4)
-    ensure_valid_parallelism_config(dist_config)
     assert dist_config.dp_rank == 1
     assert dist_config.pp_rank == 0
     assert dist_config.mp_rank == 0
 
     dist_config = DistributeConfig(local_rank=0, rank=5)
-    ensure_valid_parallelism_config(dist_config)
     assert dist_config.dp_rank == 1
     assert dist_config.pp_rank == 0
     assert dist_config.mp_rank == 1
 
     dist_config = DistributeConfig(local_rank=0, rank=6)
-    ensure_valid_parallelism_config(dist_config)
     assert dist_config.dp_rank == 1
     assert dist_config.pp_rank == 1
     assert dist_config.mp_rank == 0
 
     dist_config = DistributeConfig(local_rank=0, rank=7)
-    ensure_valid_parallelism_config(dist_config)
     assert dist_config.dp_rank == 1
     assert dist_config.pp_rank == 1
     assert dist_config.mp_rank == 1
@@ -99,49 +90,41 @@ def test_ensure_valid_parallelism_config2(monkeypatch):
     monkeypatch.setenv("WORLD_SIZE", "8")
 
     dist_config = DistributeConfig(local_rank=0, rank=0)
-    ensure_valid_parallelism_config(dist_config)
     assert dist_config.dp_rank == 0
     assert dist_config.pp_rank == 0
     assert dist_config.mp_rank == 0
 
     dist_config = DistributeConfig(local_rank=0, rank=1)
-    ensure_valid_parallelism_config(dist_config)
     assert dist_config.dp_rank == 0
     assert dist_config.pp_rank == 0
     assert dist_config.mp_rank == 1
 
     dist_config = DistributeConfig(local_rank=0, rank=2)
-    ensure_valid_parallelism_config(dist_config)
     assert dist_config.dp_rank == 1
     assert dist_config.pp_rank == 0
     assert dist_config.mp_rank == 0
 
     dist_config = DistributeConfig(local_rank=0, rank=3)
-    ensure_valid_parallelism_config(dist_config)
     assert dist_config.dp_rank == 1
     assert dist_config.pp_rank == 0
     assert dist_config.mp_rank == 1
 
     dist_config = DistributeConfig(local_rank=0, rank=4)
-    ensure_valid_parallelism_config(dist_config)
     assert dist_config.dp_rank == 0
     assert dist_config.pp_rank == 1
     assert dist_config.mp_rank == 0
 
     dist_config = DistributeConfig(local_rank=0, rank=5)
-    ensure_valid_parallelism_config(dist_config)
     assert dist_config.dp_rank == 0
     assert dist_config.pp_rank == 1
     assert dist_config.mp_rank == 1
 
     dist_config = DistributeConfig(local_rank=0, rank=6)
-    ensure_valid_parallelism_config(dist_config)
     assert dist_config.dp_rank == 1
     assert dist_config.pp_rank == 1
     assert dist_config.mp_rank == 0
 
     dist_config = DistributeConfig(local_rank=0, rank=7)
-    ensure_valid_parallelism_config(dist_config)
     assert dist_config.dp_rank == 1
     assert dist_config.pp_rank == 1
     assert dist_config.mp_rank == 1
@@ -171,31 +154,26 @@ def test_ensure_valid_parallelism_config3(monkeypatch):
     monkeypatch.setenv("WORLD_SIZE", "16")
 
     dist_config = DistributeConfig(local_rank=0, rank=0)
-    ensure_valid_parallelism_config(dist_config)
     assert dist_config.dp_rank == 0
     assert dist_config.pp_rank == 0
     assert dist_config.mp_rank == 0
 
     dist_config = DistributeConfig(local_rank=0, rank=2)
-    ensure_valid_parallelism_config(dist_config)
     assert dist_config.dp_rank == 0
     assert dist_config.pp_rank == 0
     assert dist_config.mp_rank == 2
 
     dist_config = DistributeConfig(local_rank=0, rank=7)
-    ensure_valid_parallelism_config(dist_config)
     assert dist_config.dp_rank == 0
     assert dist_config.pp_rank == 1
     assert dist_config.mp_rank == 3
 
     dist_config = DistributeConfig(local_rank=0, rank=13)
-    ensure_valid_parallelism_config(dist_config)
     assert dist_config.dp_rank == 1
     assert dist_config.pp_rank == 1
     assert dist_config.mp_rank == 1
 
     dist_config = DistributeConfig(local_rank=0, rank=15)
-    ensure_valid_parallelism_config(dist_config)
     assert dist_config.dp_rank == 1
     assert dist_config.pp_rank == 1
     assert dist_config.mp_rank == 3

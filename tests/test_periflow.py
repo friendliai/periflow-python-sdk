@@ -1,6 +1,7 @@
 """ Unit test module for periflow main
 """
 import asyncio
+import io
 import os
 import time
 import json
@@ -9,8 +10,9 @@ from pathlib import Path
 from typing import Dict
 
 import pytest
-from periflow_sdk import TrainingManager, SaveType, CKPT_FILE_NAME
+from periflow_sdk import TrainingManager, SaveType
 from periflow_sdk.comm.ipc import get_default_ipc_channel, IpcCommPurpose, IpcChannel, CommResultStatus
+from periflow_sdk.errors import PeriFlowError, PeriFlowInternalError
 
 TOTAL_TRAIN_STEPS = 5
 LOCAL_RANK = 0
@@ -82,8 +84,7 @@ def _valid_step_info(msg: Dict):
     return "step" in msg \
         and "step_time" in msg \
         and "saved" in msg \
-        and "save_type" in msg \
-        and "checkpoint_path" in msg
+        and "save_type" in msg
 
 
 def test_step(cloud_manager):
@@ -119,13 +120,11 @@ def test_step(cloud_manager):
 
 def test_step_error(local_manager):
     local_manager.start_step()
-    with pytest.raises(AssertionError) as e:
+    with pytest.raises(PeriFlowError) as e:
         local_manager.start_step()
-    assert str(e.value) == "Existing steps must finish before calling start_step()!"
     local_manager.end_step()
-    with pytest.raises(AssertionError) as e:
+    with pytest.raises(PeriFlowError) as e:
         local_manager.end_step()
-    assert str(e.value) == "Existing steps must start before calling end_step()!"
 
 
 def test_step_multi_ranks(cloud_manager, cloud_manager_v2):
@@ -144,8 +143,8 @@ def test_step_multi_ranks(cloud_manager, cloud_manager_v2):
     server_ack_channel_2.open()
 
     with ThreadPoolExecutor(max_workers=2) as executor:
-        assert cloud_manager.get_current_step() == 0
-        assert cloud_manager_v2.get_current_step() == 5
+        assert cloud_manager._cur_step == 0
+        assert cloud_manager_v2._cur_step == 5
         cloud_manager.start_step()
         cloud_manager_v2.start_step()
         executor.submit(_send_ack_on_receive, server_step_channel, server_ack_channel)
@@ -203,8 +202,7 @@ def test_cloud_save_load(cloud_manager, cloud_manager_v2):
                                   1,
                                   cloud_manager._dist_config.mp_rank,
                                   cloud_manager._dist_config.pp_rank) /  # pylint: disable=protected-access
-                              CKPT_FILE_NAME)
-        assert stat_info_msg["checkpoint_path"] == str(expected_ckpt_path.resolve())
+                              'ckpt.pt')
 
     read_obj = cloud_manager.load(expected_ckpt_path)
     assert read_obj == obj
@@ -228,8 +226,7 @@ def test_cloud_save_load(cloud_manager, cloud_manager_v2):
                                   2,
                                   cloud_manager._dist_config.mp_rank,
                                   cloud_manager._dist_config.pp_rank) /  # pylint: disable=protected-access
-                              CKPT_FILE_NAME)
-        assert stat_info_msg["checkpoint_path"] == str(expected_ckpt_path.resolve())
+                              'ckpt.pt')
 
     read_obj = cloud_manager.load(expected_ckpt_path)
     assert read_obj == obj
@@ -265,8 +262,7 @@ def test_cloud_save_load(cloud_manager, cloud_manager_v2):
                                   6,
                                   cloud_manager_v2._dist_config.mp_rank,
                                   cloud_manager_v2._dist_config.pp_rank) /  # pylint: disable=protected-access
-                              CKPT_FILE_NAME)
-        assert stat_info_msg["checkpoint_path"] == str(expected_ckpt_path.resolve())
+                              'ckpt.pt')
 
     read_obj = cloud_manager_v2.load(expected_ckpt_path)
     assert read_obj == obj
@@ -280,14 +276,24 @@ def test_cloud_save_load(cloud_manager, cloud_manager_v2):
     cloud_manager_v2._teardown()
 
 
+def test_load_save_with_io(cloud_manager):
+    file_like = io.BytesIO()
+    with pytest.raises(PeriFlowError):
+        cloud_manager.load(file_like)
+
+    cloud_manager.start_step()
+    obj = {"some value": 2.1}
+    with pytest.raises(PeriFlowError):
+        cloud_manager.save(file_like, obj)
+
+
 def test_duplicate_save_error(local_manager):
     local_manager.start_step()
     obj = {"some value": 2.1}
     local_manager.save(obj, CKPT_PATH)
     Path(CKPT_PATH).unlink()
-    with pytest.raises(AssertionError) as e:
+    with pytest.raises(PeriFlowError) as e:
         local_manager.save(obj, CKPT_PATH)
-    assert str(e.value) == "You cannot call `pf.save()` twice within a training step."
     local_manager.end_step()
 
 
@@ -295,9 +301,8 @@ def test_save_out_of_scope(local_manager):
     local_manager.start_step()
     obj = {"some value": 2.1}
     local_manager.end_step()
-    with pytest.raises(AssertionError) as e:
+    with pytest.raises(PeriFlowError) as e:
         local_manager.save(obj, CKPT_PATH)
-    assert str(e.value) == "You can only call `pf.save()` within a training step scope."
 
 
 def test_cloud_metric(cloud_manager):
