@@ -27,6 +27,8 @@ class IpcCommPurpose(str, Enum):
     ACK = "ACK"
     EMERGENCY_SAVE = "EMERGENCY_SAVE"
     LAST_STEP = "LAST_STEP"
+    CKPT = "CKPT"
+    JOB_FINISHED = "JOB_FINISHED"
 
 
 class FifoBase:
@@ -268,6 +270,10 @@ def get_default_ipc_channel(purpose: IpcCommPurpose, local_rank: int) -> IpcChan
         fifoname = f"/tmp/periflow_emergency_save_ipc_fifo_{local_rank}"
     elif purpose == IpcCommPurpose.LAST_STEP:
         fifoname = f"/tmp/periflow_last_step_ipc_fifo_{local_rank}"
+    elif purpose == IpcCommPurpose.CKPT:
+        fifoname = f"/tmp/periflow_ckpt_ipc_fifo_{local_rank}"
+    elif purpose == IpcCommPurpose.JOB_FINISHED:
+        fifoname = f"/tmp/periflow_job_finished_ipc_fifo_{local_rank}"
     else:
         raise ValueError(f"Invalid purpose ({purpose}) is provided")
     return IpcChannel(fifoname, local_rank)

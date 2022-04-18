@@ -26,9 +26,11 @@ from periflow_sdk.errors import PeriFlowError, PeriFlowInternalError
 from periflow_sdk.utils import (
     check_initialized,
     ensure_divisibility,
-    DistributeConfig,
     SaveType
 )
+
+
+periflow_logger = logging.getLogger("PERIFLOW_SDK")
 
 
 class TrainingManager:
@@ -43,7 +45,9 @@ class TrainingManager:
         self._cur_step: int = 0
         self._save_method: Optional[SaveType] = None
         self._step_start_time: Optional[float] = None
-        self._dist_config: Optional[DistributeConfig] = None
+
+        self._local_rank: Optional[int] = None
+        self._rank: Optional[int] = None
 
         # IPC Channels
         self._ipc_channels: Dict[IpcCommPurpose, IpcChannel] = {}
@@ -72,17 +76,17 @@ class TrainingManager:
 
             # Configure dist info
             world_size = int(os.environ["WORLD_SIZE"])
-            rank = int(os.environ["RANK"])
             num_nodes = int(os.environ["NUM_NODES"])
             ensure_divisibility(world_size, num_nodes)
             devices_per_node = world_size // num_nodes
-            local_rank = rank % devices_per_node
+
+            self._rank = int(os.environ["RANK"])
+            self._local_rank = self._rank % devices_per_node
             self._cur_step = int(os.environ["PROCESSED_ITERS"])
-            self._dist_config = DistributeConfig(local_rank=local_rank, rank=rank)
 
             # IPC Channels
             self._ipc_channels: Dict[IpcCommPurpose, IpcChannel] = {
-                k: get_default_ipc_channel(purpose=k, local_rank=local_rank) for k in IpcCommPurpose
+                k: get_default_ipc_channel(purpose=k, local_rank=self._local_rank) for k in IpcCommPurpose
             }
             for ipc_channel in self._ipc_channels.values():
                 ipc_channel.open()
@@ -91,13 +95,8 @@ class TrainingManager:
             self._wait_emergency_save_thread = Thread(target=self._wait_for_emergency_save_request, daemon=True)
             self._wait_emergency_save_thread.start()
 
-        if teardown_at_exit:
-            # teardown will be called at exit of the program.
-            atexit.register(self._teardown)
-
-    @property
-    def _is_saved(self) -> bool:
-        return self._save_method is not None
+            if teardown_at_exit:
+                atexit.register(self._teardown)
 
     @property
     def _is_step_started(self) -> bool:
@@ -113,7 +112,11 @@ class TrainingManager:
     def _teardown(self) -> None:
         """ Clean up resources.
         """
-        if not self._is_local:
+        if "NODE_RANK" in os.environ:
+            asyncio.run(self._ipc_channels[IpcCommPurpose.JOB_FINISHED].write({
+                "node_rank": int(os.environ["NODE_RANK"])
+            }))
+
             for ipc_channel in self._ipc_channels.values():
                 ipc_channel.close()
                 ipc_channel.remove()
@@ -128,19 +131,6 @@ class TrainingManager:
             pass
         else:
             self._emergency_save_step = msg['emergency_save_step']
-
-    def _overwrite_path(self, path: Union[os.PathLike, str]) -> Path:
-        path = Path(path)
-        filename = path.name
-
-        if not self._is_local and "CKPT_DIR" in os.environ:
-            mp_rank = getattr(self._dist_config, 'mp_rank', 0)
-            pp_rank = getattr(self._dist_config, 'pp_rank', 0)
-
-            path = Path(os.environ["CKPT_DIR"]) / "iter_{:07d}/mp_rank_{:02d}_{:03d}/{}".format(
-                self._cur_step, mp_rank, pp_rank, filename)
-
-        return path
 
     def _local_log(self, msg):
         mode = "a" if self._has_locally_logged else "w"
@@ -215,20 +205,14 @@ class TrainingManager:
                 msg = {
                     "step": self._cur_step,
                     "step_time": step_time,
-                    "saved": self._is_saved,
-                    "save_type": self._save_method,
                 }
                 asyncio.run(self._ipc_channels[IpcCommPurpose.STEP_INFO].write(msg))
 
                 # Wait for ack.
                 ack = asyncio.run(self._ipc_channels[IpcCommPurpose.ACK].read())
+
                 if ack["status"] != CommResultStatus.SUCCESS:
                     raise PeriFlowInternalError(f'Invalid IPC message from FTModule: {ack}')
-
-                # If emergency save is done, terminate the training process.
-                if self._save_method is SaveType.EMERGENCY:
-                    sys.exit()
-
             except IpcConnectionError as e:
                 raise PeriFlowInternalError('IPC connection between training manager and FTModule is broken.') from e
 
@@ -265,83 +249,26 @@ class TrainingManager:
             new_msg = msg.copy()
 
             new_msg["step"] = self._cur_step
-            new_msg["rank"] = self._dist_config.rank
-            new_msg["local_rank"] = self._dist_config.local_rank
+            new_msg["rank"] = self._rank
+            new_msg["local_rank"] = self._local_rank
 
             asyncio.run(self._ipc_channels[IpcCommPurpose.METRIC].write(new_msg))
 
-    def is_checkpoint_exist(self, path: Union[os.PathLike, str]) -> bool:
-        """Check whether the checkpoint file exists or not
-
-        Args:
-            path: Pathlike object which points target checkpoint file
-
-        Returns:
-            'True' if path exist 'False' if not
-        """
-        path = self._overwrite_path(path)
-        return os.path.exists(path)
-
-    def load(self, path: Union[os.PathLike, str, BinaryIO, IO[bytes]], *args, **kwargs) -> Any:
-        """Wrapped method of `torch.load`
-
-        Args:
-            path: The path of target object. Ignored in cloud mode.
-            args: other arguments that will be passed to `torch.load`
-            kwargs: other keyword arguments that will be passed to `torch.load`
-
-        Raises:
-            PeriFlowError: when path is a file-like object
-
-        Returns:
-            Loaded object
-        """
-        if not isinstance(path, (str, Path)):
-            raise PeriFlowError(
-                f"Invalid argument {path}. pf.load does not support IO object. Use torch.load or pass PathLike object")
-
-        path = self._overwrite_path(path)
-        return torch.load(path, *args, **kwargs)
-
     @check_initialized
-    def save(self,
-             obj: Any,
-             path: Union[os.PathLike, str, BinaryIO, IO[bytes]],
-             *args,
-             **kwargs):
-        """Wrapped method of `torch.save`
+    def upload_checkpoint(self):
+        if "CKPT_DIR" not in os.environ:
+            periflow_logger.warning(
+                "`upload_checkpoint` does nothing because `output_checkpoint_dir` is not configured when job launched.")
+            return
 
-        Args:
-            obj: Object to be stored
-            path: Path to be stored. Ignored in cluster mode.
-            args: other arguments that will be passed to `torch.save`
-            kwargs: other keyword arguments that will be passed to `torch.save`
+        save_type = SaveType.EMERGENCY if self._cur_step == self._emergency_save_step else SaveType.NORMAL
 
-        Raises:
-            PeriFlowError: when path is a file-like object
-        """
-        if not isinstance(path, (str, Path)):
-            raise PeriFlowError(
-                f"Invalid argument {path}. pf.save does not support IO object. Use torch.save or pass PathLike object")
+        msg = {
+            "step": self._cur_step,
+            "save_type": save_type.value
+        }
 
-        if self._is_saved:
-            raise PeriFlowError(
-                "You cannot call `pf.save()` twice within a training step.")
-
-        if not self._is_step_started:
-            raise PeriFlowError(
-                "You can only call `pf.save()` within a training step scope.")
-
-        path = self._overwrite_path(path)
-        if not path.parent.exists():
-            path.parent.mkdir(parents=True, exist_ok=True)
-
-        torch.save(obj, path, *args, **kwargs)
-
-        if self.is_emergency_save():
-            self._save_method = SaveType.EMERGENCY
-        else:
-            self._save_method = SaveType.NORMAL
+        asyncio.run(self._ipc_channels[IpcCommPurpose.CKPT].write(msg))
 
 
 periflow = TrainingManager()
