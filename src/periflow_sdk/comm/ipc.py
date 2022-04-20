@@ -28,6 +28,7 @@ class IpcCommPurpose(str, Enum):
     EMERGENCY_SAVE = "EMERGENCY_SAVE"
     LAST_STEP = "LAST_STEP"
     CKPT = "CKPT"
+    CKPT_ACK = "CKPT_ACK"
     JOB_FINISHED = "JOB_FINISHED"
 
 
@@ -272,6 +273,8 @@ def get_default_ipc_channel(purpose: IpcCommPurpose, local_rank: int) -> IpcChan
         fifoname = f"/tmp/periflow_last_step_ipc_fifo_{local_rank}"
     elif purpose == IpcCommPurpose.CKPT:
         fifoname = f"/tmp/periflow_ckpt_ipc_fifo_{local_rank}"
+    elif purpose == IpcCommPurpose.CKPT_ACK:
+        fifoname = f"/tmp/periflow_ckpt_ack_ipc_fifo_{local_rank}"
     elif purpose == IpcCommPurpose.JOB_FINISHED:
         fifoname = f"/tmp/periflow_job_finished_ipc_fifo_{local_rank}"
     else:

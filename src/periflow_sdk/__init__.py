@@ -162,6 +162,11 @@ class TrainingManager:
             if not isinstance(total_train_steps, int):
                 raise PeriFlowError(f'total_train_steps should be an integer, got {type(total_train_steps)}')
 
+            if total_train_steps <= self._cur_step:
+                raise PeriFlowError(
+                    'total_train_steps should be greater than the current step, '
+                    f'current step = {self._cur_step}, total train step = {total_train_steps}')
+
             self._total_train_steps = total_train_steps
 
             asyncio.run(
@@ -273,14 +278,17 @@ class TrainingManager:
             "save_type": save_type.value
         }
 
-        asyncio.run(self._ipc_channels[IpcCommPurpose.CKPT].write(msg))
+        try:
+            asyncio.run(self._ipc_channels[IpcCommPurpose.CKPT].write(msg))
 
-        if self._cur_step == self._total_train_steps or save_type is SaveType.EMERGENCY:
-            # Wait for ack.
-            ack = asyncio.run(self._ipc_channels[IpcCommPurpose.ACK].read())
+            if self._cur_step == self._total_train_steps or save_type is SaveType.EMERGENCY:
+                # Wait for ack.
+                ack = asyncio.run(self._ipc_channels[IpcCommPurpose.CKPT_ACK].read())
 
-            if ack["status"] != CommResultStatus.SUCCESS:
-                raise PeriFlowInternalError(f'Invalid IPC message from FTModule: {ack}')
+                if ack["status"] != CommResultStatus.SUCCESS:
+                    raise PeriFlowInternalError(f'Invalid IPC message from FTModule: {ack}')
+        except IpcConnectionError as e:
+            raise PeriFlowInternalError('IPC connection between training manager and FTModule is broken.') from e
 
 
 periflow = TrainingManager()

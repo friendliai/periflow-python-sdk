@@ -43,7 +43,7 @@ def cloud_manager_v2(monkeypatch):
     monkeypatch.setenv("NODE_RANK", str(1))
     monkeypatch.setenv("NUM_NODES", str(4))
     monkeypatch.setenv("WORLD_SIZE", str(16))
-    monkeypatch.setenv("PROCESSED_ITERS", str(5))
+    monkeypatch.setenv("PROCESSED_ITERS", str(4))
     manager = TrainingManager(teardown_at_exit=False)
     manager.init(total_train_steps=5)
     return manager
@@ -121,7 +121,7 @@ def test_step_multi_ranks(cloud_manager, cloud_manager_v2):
 
     with ThreadPoolExecutor(max_workers=2) as executor:
         assert cloud_manager._cur_step == 0
-        assert cloud_manager_v2._cur_step == 5
+        assert cloud_manager_v2._cur_step == 4
         cloud_manager.start_step()
         cloud_manager_v2.start_step()
         executor.submit(_send_ack_on_receive, server_step_channel, server_ack_channel)
