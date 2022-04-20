@@ -257,6 +257,10 @@ class TrainingManager:
 
     @check_initialized
     def upload_checkpoint(self):
+        """Trigger uploading the checkpoint of the current step.
+
+        For the last step, this function is a blocking call
+        """
         if "CKPT_DIR" not in os.environ:
             periflow_logger.warning(
                 "`upload_checkpoint` does nothing because `output_checkpoint_dir` is not configured when job launched.")

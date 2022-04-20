@@ -10,10 +10,10 @@ class SaveType(str, Enum):
 
 
 def check_initialized(func):
-    @functools.wraps
+    @functools.wraps(func)
     def wrapper(training_manager, *args, **kwargs):
         assert training_manager.has_initialized, f'{func.__name__} must be called after pf.init()!'
-        return func(*args, **kwargs)
+        return func(training_manager, *args, **kwargs)
     return wrapper
 
 
