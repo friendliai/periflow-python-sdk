@@ -2,16 +2,14 @@
 """
 import asyncio
 import atexit
-import copy
 import json
 import logging
 import os
-import sys
 import time
 from contextlib import contextmanager
 from pathlib import Path
 from threading import Thread
-from typing import Dict, Union, Any, Optional, BinaryIO, IO
+from typing import Dict, Optional
 
 import torch
 
@@ -42,6 +40,7 @@ class TrainingManager:
 
         self._is_local: bool = os.environ.get("PERIFLOW_ENABLED") != "1"
 
+        self._total_train_steps: int = -1
         self._cur_step: int = 0
         self._save_method: Optional[SaveType] = None
         self._step_start_time: Optional[float] = None
@@ -71,7 +70,7 @@ class TrainingManager:
             for env_var in required_env_vars:
                 if env_var not in os.environ:
                     raise PeriFlowInternalError(
-                        f"Environment variable '{env_var}' should be set in cloud mode!."
+                        f"Environment variable '{env_var}' should be set in cloud mode!"
                     )
 
             # Configure dist info
@@ -163,9 +162,11 @@ class TrainingManager:
             if not isinstance(total_train_steps, int):
                 raise PeriFlowError(f'total_train_steps should be an integer, got {type(total_train_steps)}')
 
+            self._total_train_steps = total_train_steps
+
             asyncio.run(
                 self._ipc_channels[IpcCommPurpose.LAST_STEP].write({
-                    "step": total_train_steps
+                    "step": self._total_train_steps
                 }))
 
         self.has_initialized = True
@@ -269,6 +270,13 @@ class TrainingManager:
         }
 
         asyncio.run(self._ipc_channels[IpcCommPurpose.CKPT].write(msg))
+
+        if self._cur_step == self._total_train_steps or save_type is SaveType.EMERGENCY:
+            # Wait for ack.
+            ack = asyncio.run(self._ipc_channels[IpcCommPurpose.ACK].read())
+
+            if ack["status"] != CommResultStatus.SUCCESS:
+                raise PeriFlowInternalError(f'Invalid IPC message from FTModule: {ack}')
 
 
 periflow = TrainingManager()

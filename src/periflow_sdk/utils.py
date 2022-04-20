@@ -9,8 +9,8 @@ class SaveType(str, Enum):
     EMERGENCY = "EMERGENCY"
 
 
-@functools.wraps
 def check_initialized(func):
+    @functools.wraps
     def wrapper(training_manager, *args, **kwargs):
         assert training_manager.has_initialized, f'{func.__name__} must be called after pf.init()!'
         return func(*args, **kwargs)
