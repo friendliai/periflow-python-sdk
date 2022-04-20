@@ -133,3 +133,4 @@ cifar-10*
 *.pth
 build.sh
 .idea
+.vscode

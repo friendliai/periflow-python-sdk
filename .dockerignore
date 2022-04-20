@@ -1,0 +1,10 @@
+**/.eggs/
+**/.mypy_cache/
+**/.pytest_cache/
+**/.vscode
+**/htmlcov/
+**/docs/
+**/tests/
+**/__pycache__/
+.git
+.gitignore
