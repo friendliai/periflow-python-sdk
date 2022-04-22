@@ -8,9 +8,11 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Dict
 
 import pytest
-from periflow_sdk import TrainingManager, SaveType
+
 from periflow_sdk.comm.ipc import get_default_ipc_channel, IpcCommPurpose, IpcChannel, CommResultStatus
 from periflow_sdk.errors import PeriFlowError
+from periflow_sdk.manager import TrainingManager
+from periflow_sdk.utils import SaveType
 
 
 @pytest.fixture
