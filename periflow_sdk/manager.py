@@ -61,8 +61,7 @@ class TrainingManager:
         if not self._is_local:
 
             # Environment variable check.
-            required_env_vars = ["RANK",
-                                 "WORLD_SIZE",
+            required_env_vars = ["WORLD_SIZE",
                                  "NODE_RANK",
                                  "NUM_NODES",
                                  "PROCESSED_ITERS"]
@@ -79,7 +78,11 @@ class TrainingManager:
             ensure_divisibility(world_size, num_nodes)
             devices_per_node = world_size // num_nodes
 
-            self._rank = int(os.environ["RANK"])
+            if torch.distributed.is_initialized():
+                self._rank = torch.distributed.get_rank()
+            else:
+                self._rank = int(os.environ.get("RANK", "0"))
+
             self._local_rank = self._rank % devices_per_node
             self._cur_step = int(os.environ["PROCESSED_ITERS"])
 
