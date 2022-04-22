@@ -1,14 +1,14 @@
 """PeriFlow
 """
-from periflow_sdk import manager
+from periflow_sdk.manager import periflow
 
-start_step = manager.periflow.start_step
-end_step = manager.periflow.end_step
-init = manager.periflow.init
-train_step = manager.periflow.train_step
-is_emergency_save = manager.periflow.is_emergency_save
-metric = manager.periflow.metric
-upload_checkpoint = manager.periflow.upload_checkpoint
+start_step = periflow.start_step
+end_step = periflow.end_step
+init = periflow.init
+train_step = periflow.train_step
+is_emergency_save = periflow.is_emergency_save
+metric = periflow.metric
+upload_checkpoint = periflow.upload_checkpoint
 
 __all__ = [
     'start_step',
