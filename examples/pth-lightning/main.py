@@ -156,14 +156,14 @@ def main(args):
             every_n_epochs=1,
             save_top_k=1,
         )
-        pattern = re.compile(f"step=(\d+)")
+        pattern = re.compile(r"step=(\d+)")
         checkpoint_iter = None
         for ckpt_path in Path(args.checkpoint_dir).glob("**/*"):
             step = int(pattern.findall(ckpt_path.name)[0])
             if checkpoint_iter is None:
                 checkpoint_iter = step
             else:
-                checkpoint_tier = max(checkpoint_iter, step)
+                checkpoint_iter = max(checkpoint_iter, step)
 
         if checkpoint_iter is not None:
             ckpt_path = checkpoint_callback.format_checkpoint_name(dict(step=checkpoint_iter))
