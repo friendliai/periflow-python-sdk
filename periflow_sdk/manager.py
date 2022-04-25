@@ -42,7 +42,6 @@ class TrainingManager:
 
         self._total_train_steps: int = -1
         self._cur_step: int = 0
-        self._save_method: Optional[SaveType] = None
         self._step_start_time: Optional[float] = None
 
         self._local_rank: Optional[int] = None
@@ -114,14 +113,9 @@ class TrainingManager:
     def _teardown(self) -> None:
         """ Clean up resources.
         """
-        if "NODE_RANK" in os.environ:
-            asyncio.run(self._ipc_channels[IpcCommPurpose.JOB_FINISHED].write({
-                "node_rank": int(os.environ["NODE_RANK"])
-            }))
-
-            for ipc_channel in self._ipc_channels.values():
-                ipc_channel.close()
-                ipc_channel.remove()
+        for ipc_channel in self._ipc_channels.values():
+            ipc_channel.close()
+            ipc_channel.remove()
 
     def _wait_for_emergency_save_request(self) -> None:
         """ Wait for the emergency save request from the IPC channel.
@@ -179,6 +173,9 @@ class TrainingManager:
 
         self.has_initialized = True
 
+    def get_current_step(self) -> int:
+        return self._cur_step
+
     @check_initialized
     def start_step(self) -> None:
         """Start a new training step.
@@ -190,7 +187,6 @@ class TrainingManager:
             raise PeriFlowError(
                 'Step already started. Maybe `end_step` is not called for the previous step?)')
 
-        self._save_method = None
         if not self._is_local:
             self._cur_step += 1
 
@@ -274,7 +270,7 @@ class TrainingManager:
                 "`upload_checkpoint` does nothing because `output_checkpoint_dir` is not configured when job launched.")
             return
 
-        save_type = SaveType.EMERGENCY if self._cur_step == self._emergency_save_step else SaveType.NORMAL
+        save_type = SaveType.EMERGENCY if self.is_emergency_save() else SaveType.NORMAL
 
         msg = {
             "step": self._cur_step,
