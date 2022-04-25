@@ -130,12 +130,10 @@ class PeriFlowCallback(Callback):
                            batch_idx: int,
                            unused: int = 0) -> None:
         loss = float(outputs['loss'])
-        """
         pf.metric({
             "iteration": trainer.global_step,
             "loss": loss,
         })
-        """
         pf.end_step()
 
 
@@ -193,6 +191,6 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--checkpoint-dir", default=None)
-    parser.add_argument("--num-epochs", default=10)
+    parser.add_argument("--checkpoint-dir", type=str, default=None)
+    parser.add_argument("--num-epochs", type=int, default=10)
     main(parser.parse_args())

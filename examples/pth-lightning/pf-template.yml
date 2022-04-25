@@ -1,0 +1,39 @@
+# The name of experiment
+experiment: pl-experiment
+
+# The name of job
+name: pl-run
+
+# The name of vm type
+vm: azure-v100-4g-eastus-spot
+
+# The number of GPU devices
+num_devices: 1
+
+# Configure your job!
+job_setting:
+  type: custom
+
+  # Docker config
+  docker:
+    # Docker image you want to use in the job
+    image: friendliai/periflow:sdk
+    # Bash shell command to run the job
+    command: >
+      cd /workspace/pth-lightning && pip install pytorch-lightning && python main.py \
+        --checkpoint-dir /workspace/ckpt \
+        --num-epochs 10
+  # Path to mount your workspace volume
+  workspace:
+    mount_path: /workspace
+
+# Distributed training config
+dist:
+  dp_degree: 1
+  pp_degree: 1
+  mp_degree: 1
+
+# Checkpoint config
+checkpoint:
+  # Path to output checkpoint
+  output_checkpoint_dir: /workspace/ckpt
