@@ -191,7 +191,7 @@ class ModelArguments:
     )
 
 
-class CustomCallback(TrainerCallback):
+class PeriFlowCallback(TrainerCallback):
     def on_step_begin(self, args, state, control, **kwargs):
         pf.start_step()
 
@@ -504,7 +504,7 @@ def main():
         data_collator = None
 
     pf.init(total_train_steps=training_args.max_steps)
-    callback = CustomCallback()
+    callback = PeriFlowCallback()
 
     # Initialize our Trainer
     trainer = Trainer(
