@@ -1,5 +1,4 @@
 tags
-**/examples
 **/.eggs/
 **/.mypy_cache/
 **/.pytest_cache/
@@ -10,3 +9,5 @@ tags
 **/__pycache__/
 .git
 .gitignore
+examples
+periflow_sdk.egg-info
