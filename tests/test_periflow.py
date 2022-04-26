@@ -83,7 +83,6 @@ def test_step(cloud_manager):
             stat_info_msg = f.result()
             assert _valid_step_info(stat_info_msg)
             assert stat_info_msg["step"] == i + 1
-            assert cloud_manager.get_current_step() == i + 1
 
     with ThreadPoolExecutor(max_workers=1) as executor:
         f = executor.submit(_send_ack_on_receive, server_step_channel, server_ack_channel)
@@ -92,7 +91,6 @@ def test_step(cloud_manager):
         cloud_manager.end_step()
         stat_info_msg = f.result()
         assert _valid_step_info(stat_info_msg)
-        assert cloud_manager.get_current_step() == 5
 
     server_step_channel.close()
     server_ack_channel.close()

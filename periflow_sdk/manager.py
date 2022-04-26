@@ -177,12 +177,6 @@ class TrainingManager:
 
         self.has_initialized = True
 
-    def get_current_step(self) -> int:
-        if self._is_local:
-            periflow_logger.warning("`get_current_step` might return incorrect current step in local mode "
-                                    "(User must pass `start_step` when calling pf.init)")
-        return self._cur_step
-
     @check_initialized
     def start_step(self) -> None:
         """Start a new training step.
