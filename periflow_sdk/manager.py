@@ -135,13 +135,11 @@ class TrainingManager:
 
     def init(self,
              total_train_steps: int,
-             start_step: int = 0,
              local_log_name: Optional[str] = None) -> None:
         """Initialize the training manager.
 
         Args:
             total_train_steps: The number of total training steps
-            start_step: first step of the training (only for local mode)
             local_log_name: log file name for local mode (only for local mode)
 
         Raises:
@@ -157,8 +155,6 @@ class TrainingManager:
                     self._log_path = Path(f"./periflow_trainer_{int(time.time())}_{rank}.log")
                 else:
                     self._log_path = Path(f"./periflow_trainer_{int(time.time())}.log")
-
-            self._cur_step = start_step
         else:
             if not isinstance(total_train_steps, int):
                 raise PeriFlowError(f'total_train_steps should be an integer, got {type(total_train_steps)}')
