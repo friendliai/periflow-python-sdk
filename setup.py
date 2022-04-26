@@ -52,6 +52,10 @@ setup(
         "Programming Language :: Python :: 3",
         "Natural Language :: English",
     ],
+    python_requires='>=3.6',
     include_package_data=True,
-    install_requires=COMMON_DEPS + TEST_DEPS
+    install_requires=COMMON_DEPS,
+    extras_require={
+        "test": TEST_DEPS,
+    }
 )
