@@ -32,6 +32,15 @@ job_setting:
         --data-path /workspace/data \
         --save /workspace/ckpt \
         --load /workspace/ckpt
+  # Path to mount your workspace volume
+  workspace:
+    mount_path: /workspace
+
+# Distributed training config
+dist:
+  dp_degree: 16
+  pp_degree: 1
+  mp_degree: 1
 
 # Checkpoint config
 checkpoint:
