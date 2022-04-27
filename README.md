@@ -16,11 +16,11 @@ to us.
 ### Installation
 
 PeriFlow SDK is built to PyPI and can be installed as follows:
-```
+```sh
 pip install periflow_sdk
 ```
 Also, you can install from source by cloning this repository:
-```
+```sh
 git clone https://github.com/friendliai/periflow-python-sdk.git
 cd periflow-python-sdk
 pip install .
@@ -29,18 +29,18 @@ pip install .
 ### Using PeriFlow SDK
 
 Basically, you can import and use our SDK as follows:
-```
+```python
 import periflow_sdk as pf
 ```
 
 PeriFlow SDK provides several functions to make your training code works with PeriFlow.
 
-```
-1. pf.init(total_train_steps: int, local_log_name: Optional[str] = None) -> None
+```python
+pf.init(total_train_steps: int, local_log_name: Optional[str] = None) -> None
 ```
 
 This function initializes PeriFlow.
-All other functions of PeriFlow should be called after initialization.
+All other functions of PeriFlow SDK should be called after initialization.
 
 - `total_train_steps`: The number of total training steps of the training job
 - `local_log_name`: local filename where `pf.metric` writes into
@@ -49,35 +49,35 @@ All other functions of PeriFlow should be called after initialization.
 
 ---
 
-```
-2. pf.start_step() -> None
+```python
+pf.start_step() -> None
 ```
 Mark that a single training step begins.
 
 ---
 
-```
-3. pf.end_step() -> None
+```python
+pf.end_step() -> None
 ```
 Mark that the single training step ends.
 
-**Note**: we provide the function `pf.train_step`, a contextmanager which wraps `start_step` and `end_step`. `train_step` can be used as
-```
+**Note**: we provide function `pf.train_step`, a contextmanager which wraps `start_step` and `end_step`. `train_step` can be used as follows:
+```python
 with pf.train_step():
     # your training step code
 ```
 
 ---
 
-```
-4. pf.upload_checkpoint() -> None
+```python
+pf.upload_checkpoint() -> None
 ```
 Trigger uploading the checkpoint of the current step.
 
 **Note**: This function does nothing in local mode  
 **Note**: In distributed training (e.g., torch DDP), all ranks should call this function even if some of them have not actually saved the checkpoint.
 For example, not
-```
+```python
 import torch
 
 ...
@@ -86,7 +86,7 @@ if torch.distributed.get_rank() == 0:
     pf.upload_checkpoint()
 ```
 , but
-```
+```python
 import torch
 
 ...
@@ -97,8 +97,8 @@ pf.upload_checkpoint()
 
 ---
 
-```
-5. pf.metric(msg: Dict[str, JSONValue]) -> None
+```python
+pf.metric(msg: Dict[str, JSONValue]) -> None
 ```
 Optional function which logs a key-value metric dict and sends it to PeriFlow.
 However, this function does nothing in cloud mode.
@@ -108,19 +108,19 @@ In local mode, this function writes the given metric dict into the local file sy
 
 We provide simple [examples](./examples) in which PeriFlow SDK is applied.
 Each example contains a template as `pf-template.yml`, which is needed when launching a training job with PeriFlow:
-```
+```sh
 pf job run -f (cifar|huggingface|pth-lightning)/pf-template.yml -d (cifar|huggingface|pth-lightning)
 ```
 
 #### Vanilla PyTorch Example
 
 [CIFAR example](./examples/cifar/main.py) is an example training script that uses vanilla PyTorch and Torch Distributed Data Parallel (DDP).
-To apply PeriFlow SDK, we first initialize PeriFlow as
-```
+To apply PeriFlow SDK, we first initialize PeriFlow as follows:
+```python
 pf.init(total_train_steps=total_steps)
 ```
-. Then we wrap calling the `train_step` with `pf.train_step`
-```
+Then we wrap calling the `train_step` with `pf.train_step`.
+```python
 with pf.train_step():
     loss, learning_rate = train_step(inputs=inputs,
                                      labels=labels,
@@ -132,8 +132,8 @@ with pf.train_step():
         torch.cuda.synchronize()
     end_time = time.time()
 ```
-. Finally, we call `upload_checkpoint` after saving checkpoint
-```
+Finally, we call `upload_checkpoint` after saving checkpoint.
+```python
 if args.save and step % args.save_interval == 0:
     if torch_ddp.get_rank() == 0:
         torch.save({"latest_step": step,
@@ -149,8 +149,8 @@ if args.save and step % args.save_interval == 0:
 #### HuggingFace Trainer Example
 
 [HuggingFace example](./examples/huggingface/run_glue.py) is an example training script that uses HuggingFace Trainer class.
-Instead of inheriting and writing a custom Trainer class, we inject `PeriFlowCallback` as
-```
+Instead of inheriting and writing a custom Trainer class, we inject `PeriFlowCallback` as follows:
+```python
 class PeriFlowCallback(TrainerCallback):
     def on_step_begin(self, args, state, control, **kwargs):
         pf.start_step()
@@ -161,8 +161,8 @@ class PeriFlowCallback(TrainerCallback):
     def on_save(self, args, state, control, **kwargs):
         pf.upload_checkpoint()
 ```
-. Then, PeriFlow can be used as
-```
+Then, we create a Trainer class using our custom callback.
+```python
 pf.init(total_train_steps=training_args.max_steps)
 callback = PeriFlowCallback()
 
@@ -181,8 +181,8 @@ trainer = Trainer(
 
 #### PyTorch Lightning Trainer Example
 [PyTorch Lightning example](./examples/pth-lightning/main.py) is an example training script that uses PyTorch Lightning Trainer class.
-Similar to HuggingFace, we can create custom callback as
-```
+Similar to HuggingFace, we can create custom callback as follows:
+```python
 class PeriFlowCallback(Callback):
     def on_train_batch_start(self,
                              trainer: pl.Trainer,
@@ -206,8 +206,8 @@ class PeriFlowCallback(Callback):
         })
         pf.end_step()
 ```
-. However, because PyTorch Lightning does not provide `on_checkpoint_save` callback, we write a simple `PeriFlowTrainer` as
-```
+However, because PyTorch Lightning does not provide `on_checkpoint_save` callback, we write a simple `PeriFlowTrainer`.
+```python
 class PeriFlowTrainer(Trainer):
     def save_checkpoint(self,
                         filepath: Union[str, Path],
@@ -216,8 +216,8 @@ class PeriFlowTrainer(Trainer):
         super().save_checkpoint(filepath, weights_only=weights_only, storage_options=storage_options)
         pf.upload_checkpoint()
 ```
-. With `PeriFlowCallback` and `PeriFlowTrainer`, we can use PeriFlow as
-```
+With `PeriFlowCallback` and `PeriFlowTrainer`, we can start the training.
+```python
 periflow_callback = PeriFlowCallback()
 trainer = PeriFlowTrainer(
     max_epochs=args.num_epochs,
