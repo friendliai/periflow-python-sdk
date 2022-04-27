@@ -5,7 +5,7 @@ experiment: huggingface-glue
 name: glue-run
 
 # The name of vm type
-vm: azure-v100-4g-eastus-spot
+vm: azure-16gb-v100-4g-eastus-spot
 
 # The number of GPU devices
 num_devices: 8
