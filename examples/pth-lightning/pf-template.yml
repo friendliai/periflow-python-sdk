@@ -5,7 +5,7 @@ experiment: pl-experiment
 name: pl-run
 
 # The name of vm type
-vm: azure-16gb-v100-4g-eastus-spot
+vm: azure-16gb-v100-1g-eastus-spot
 
 # The number of GPU devices
 num_devices: 1
@@ -26,12 +26,6 @@ job_setting:
   # Path to mount your workspace volume
   workspace:
     mount_path: /workspace
-
-# Distributed training config
-dist:
-  dp_degree: 1
-  pp_degree: 1
-  mp_degree: 1
 
 # Checkpoint config
 checkpoint:

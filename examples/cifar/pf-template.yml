@@ -36,12 +36,6 @@ job_setting:
   workspace:
     mount_path: /workspace
 
-# Distributed training config
-dist:
-  dp_degree: 16
-  pp_degree: 1
-  mp_degree: 1
-
 # Checkpoint config
 checkpoint:
   # Path to output checkpoint
