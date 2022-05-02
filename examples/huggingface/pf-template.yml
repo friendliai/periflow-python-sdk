@@ -20,7 +20,7 @@ job_setting:
     image: friendliai/periflow:sdk
     # Bash shell command to run the job
     command: >
-      cd /workspace/huggingface && pip install -r requirements.txt && torchrun --nnodes $NUM_NODES --node_rank $NODE_RANK --master_addr $MASTER_ADDR --master_port 6000 --nproc_per_node 4 run_glue.py \
+      cd /workspace/huggingface && pip install -r requirements.txt && torchrun --nnodes $NUM_NODES --node_rank $NODE_RANK --master_addr $MASTER_ADDR --master_port 6000 --nproc_per_node $NPROC_PER_NODE run_glue.py \
         --model_name_or_path bert-base-cased \
         --task_name MNLI \
         --max_seq_length 128 \

@@ -20,7 +20,7 @@ job_setting:
     image: friendliai/periflow:sdk
     # Bash shell command to run the job
     command: >
-      cd /workspace/cifar && torchrun --nnodes $NUM_NODES --node_rank $NODE_RANK --master_addr $MASTER_ADDR --master_port 6000 --nproc_per_node 4 main.py \
+      cd /workspace/cifar && torchrun --nnodes $NUM_NODES --node_rank $NODE_RANK --master_addr $MASTER_ADDR --master_port 6000 --nproc_per_node $NPROC_PER_NODE main.py \
         --model resnet50 \
         --dataset cifar100 \
         --batch-size 256 \
