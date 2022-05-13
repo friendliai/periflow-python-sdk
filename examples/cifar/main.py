@@ -1,3 +1,5 @@
+# Copyright (c) 2021-present, FriendliAI Inc. All rights reserved.
+
 """Train CIFAR10 / CIFAR100 with PyTorch."""
 import os
 import argparse

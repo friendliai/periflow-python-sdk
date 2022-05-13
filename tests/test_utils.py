@@ -1,5 +1,8 @@
+# Copyright (c) 2022-present, FriendliAI Inc. All rights reserved.
+
 """Test module for periflow_sdk/utils.py
 """
+
 import pytest
 
 from periflow_sdk.utils import ensure_divisibility

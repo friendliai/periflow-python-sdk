@@ -1,5 +1,8 @@
+# Copyright (c) 2022-present, FriendliAI Inc. All rights reserved.
+
 """PeriFlow training manager module.
 """
+
 import asyncio
 import atexit
 import json
@@ -229,11 +232,12 @@ class TrainingManager:
 
     @check_initialized
     def is_emergency_save(self) -> bool:
-        """Check whether emergency save should be handled or not
+        """Check whether emergency save should be handled or not.
+        If emergency save step is -1, it means "save right now".
 
-        Returns: 'True' if emergency save step is equal to current step, 'False' if not.
+        Returns: True if emergency save is required for now.
         """
-        return self._emergency_save_step == self._cur_step
+        return self._emergency_save_step == self._cur_step or self._emergency_save_step == -1
 
     @check_initialized
     def metric(self, msg: Dict) -> None:

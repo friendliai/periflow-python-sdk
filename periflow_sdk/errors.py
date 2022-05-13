@@ -1,6 +1,7 @@
+# Copyright (c) 2022-present, FriendliAI Inc. All rights reserved.
+
 """Wrapped errors for PeriFlow sdk
 """
-
 
 class PeriFlowError(Exception):
     pass

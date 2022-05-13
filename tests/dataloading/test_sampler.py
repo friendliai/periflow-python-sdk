@@ -1,4 +1,6 @@
-""" Test module for samplers
+# Copyright (c) 2022-present, FriendliAI Inc. All rights reserved.
+
+"""Test module for samplers
 """
 
 import pytest

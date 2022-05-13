@@ -1,4 +1,6 @@
-""" The module for classes
+# Copyright (c) 2022-present, FriendliAI Inc. All rights reserved.
+
+"""The module for classes
 """
 
 import math

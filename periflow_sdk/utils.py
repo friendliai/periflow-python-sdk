@@ -1,5 +1,8 @@
+# Copyright (c) 2022-present, FriendliAI Inc. All rights reserved.
+
 """Helper functions
 """
+
 import functools
 from enum import Enum
 

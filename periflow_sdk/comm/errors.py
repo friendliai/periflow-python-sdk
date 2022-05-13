@@ -1,3 +1,5 @@
+# Copyright (c) 2022-present, FriendliAI Inc. All rights reserved.
+
 """Exceptions that can be raised during IPC
 """
 
