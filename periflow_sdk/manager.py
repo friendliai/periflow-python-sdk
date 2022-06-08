@@ -44,7 +44,6 @@ class TrainingManager:
 
         self._is_local: bool = os.environ.get("PERIFLOW_ENABLED") != "1"
 
-        self._total_train_steps: int = -1
         self._cur_step: int = 0
         self._step_start_time: Optional[float] = None
 
@@ -140,7 +139,7 @@ class TrainingManager:
             log_file.write(f"{json.dumps(msg)}\n")
 
     def init(self,
-             total_train_steps: int,
+             total_train_steps: Optional[int],
              local_log_name: Optional[str] = None) -> None:
         """Initialize the training manager.
 
@@ -165,15 +164,13 @@ class TrainingManager:
             if not isinstance(total_train_steps, int):
                 raise PeriFlowError(f'total_train_steps should be an integer, got {type(total_train_steps)}')
 
-            if total_train_steps <= self._cur_step:
+            if total_train_steps is not None and total_train_steps <= self._cur_step:
                 raise PeriFlowError(
                     'total_train_steps should be greater than the current step, '
                     f'current step = {self._cur_step}, total train step = {total_train_steps}')
 
-            self._total_train_steps = total_train_steps
-
             ipc_write(self._ipc_channels[IpcCommPurpose.LAST_STEP], {
-                "step": self._total_train_steps
+                "step": total_train_steps
             })
 
         self.has_initialized = True
