@@ -10,6 +10,7 @@ import logging
 import os
 import time
 from contextlib import contextmanager
+from datetime import datetime
 from pathlib import Path
 from threading import Thread
 from typing import Dict, Optional
@@ -276,7 +277,8 @@ class TrainingManager:
 
         msg = {
             "step": self._cur_step,
-            "save_type": save_type.value
+            "save_type": save_type.value,
+            "trigger_time": datetime.now().isoformat()
         }
 
         try:
