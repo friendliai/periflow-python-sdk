@@ -3,7 +3,6 @@
 """ Unit test module for periflow main
 """
 
-import asyncio
 import os
 import time
 import json
@@ -12,7 +11,14 @@ from typing import Dict
 
 import pytest
 
-from periflow_sdk.comm.ipc import get_default_ipc_channel, IpcCommPurpose, IpcChannel, CommResultStatus
+from periflow_sdk.comm.ipc import (
+    get_default_ipc_channel,
+    IpcCommPurpose,
+    IpcChannel,
+    CommResultStatus,
+    ipc_read,
+    ipc_write
+)
 from periflow_sdk.errors import PeriFlowError
 from periflow_sdk.manager import TrainingManager
 from periflow_sdk.utils import SaveType
@@ -54,9 +60,9 @@ def cloud_manager_v2(monkeypatch):
     return manager
 
 
-def _send_ack_on_receive(step_info_channel: IpcChannel, ack_channel: IpcChannel):
-    msg = asyncio.run(step_info_channel.read())
-    asyncio.run(ack_channel.write(msg={"status": CommResultStatus.SUCCESS}))
+def _send_ack_on_receive(sender_channel: IpcChannel, ack_channel: IpcChannel):
+    msg = ipc_read(sender_channel)
+    ipc_write(ack_channel, {"status": CommResultStatus.SUCCESS})
     return msg
 
 
@@ -65,7 +71,7 @@ def _valid_step_info(msg: Dict):
 
 
 def _send_emergency_save(emergency_channel: IpcChannel, step: int):
-    asyncio.run(emergency_channel.write({"emergency_save_step": step}))
+    ipc_write(emergency_channel, {"emergency_save_step": step})
     return True
 
 
@@ -151,14 +157,14 @@ def test_step_multi_ranks(cloud_manager, cloud_manager_v2):
 def test_upload_checkpoint_before_end_step(cloud_manager):
     ckpt_ipc_channel = get_default_ipc_channel(purpose=IpcCommPurpose.CKPT,
                                                local_rank=0)
-    server_ack_channel = get_default_ipc_channel(purpose=IpcCommPurpose.ACK,
-                                                 local_rank=0)
+    ckpt_ack_ipc_channel = get_default_ipc_channel(purpose=IpcCommPurpose.CKPT_ACK,
+                                                   local_rank=0)
 
-    with ckpt_ipc_channel:
+    with ckpt_ipc_channel, ckpt_ack_ipc_channel:
         cloud_manager.start_step()
         cloud_manager.upload_checkpoint()
 
-        result = asyncio.run(ckpt_ipc_channel.read())
+        result = ipc_read(ckpt_ipc_channel)
         assert result["step"] == 1
         assert result["save_type"] == SaveType.NORMAL
 
@@ -171,13 +177,11 @@ def test_upload_checkpoint_after_end_step(cloud_manager):
 
     with ckpt_ipc_channel, server_ack_channel:
         cloud_manager.start_step()
-        asyncio.run(server_ack_channel.write({
-            "status": CommResultStatus.SUCCESS.value
-        }))
+        ipc_write(server_ack_channel, {"status": CommResultStatus.SUCCESS})
         cloud_manager.end_step()
         cloud_manager.upload_checkpoint()
 
-        result = asyncio.run(ckpt_ipc_channel.read())
+        result = ipc_read(ckpt_ipc_channel)
         assert result["step"] == 1
         assert result["save_type"] == SaveType.NORMAL
 
@@ -189,14 +193,14 @@ def test_cloud_metric(cloud_manager):
     cloud_manager.start_step()
     float_metric = {'some_metric': 1.5}
     cloud_manager.metric(float_metric)
-    result = asyncio.run(metric_ipc_channel.read())
+    result = ipc_read(metric_ipc_channel)
     assert "some_metric" in result and result.get("some_metric") == float_metric.get("some_metric")
     assert result.get("step") == 1
     assert result.get("rank") == 4
     assert result.get("local_rank") == 0
     string_metric = {'another_metric': "hello"}
     cloud_manager.metric(string_metric)
-    result = asyncio.run(metric_ipc_channel.read())
+    result = ipc_read(metric_ipc_channel)
     assert "another_metric" in result and result.get("another_metric") == string_metric.get("another_metric")
     assert result.get("step") == 1
     assert result.get("rank") == 4

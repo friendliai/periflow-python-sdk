@@ -16,6 +16,7 @@ from periflow_sdk.comm.errors import (
     IpcChannelNotOpenedError,
     IpcConnectionError,
 )
+from periflow_sdk.errors import PeriFlowInternalError
 
 
 class CommResultStatus(str, Enum):
@@ -279,3 +280,24 @@ def get_default_ipc_channel(purpose: IpcCommPurpose, local_rank: int) -> IpcChan
     else:
         raise ValueError(f"Invalid purpose ({purpose}) is provided")
     return IpcChannel(fifoname, local_rank)
+
+
+def ipc_read(channel: IpcChannel) -> dict:
+    try:
+        return asyncio.run(channel.read())
+    except (IpcConnectionError, IpcChannelNotOpenedError) as exc:
+        raise PeriFlowInternalError("IPC connection between PeriFlow and TrainingManager is Broken.") from exc
+
+
+def ipc_status_read(channel: IpcChannel) -> dict:
+    msg = ipc_read(channel)
+    if msg["status"] != CommResultStatus.SUCCESS:
+        raise PeriFlowInternalError(f"ERROR from PeriFlow: {msg}")
+    return msg
+
+
+def ipc_write(channel: IpcChannel, msg: dict) -> None:
+    try:
+        asyncio.run(channel.write(msg))
+    except (IpcConnectionError, IpcChannelNotOpenedError) as exc:
+        raise PeriFlowInternalError("IPC connection between PeriFlow and TrainingManager is Broken.") from exc
