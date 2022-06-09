@@ -157,10 +157,8 @@ def test_step_multi_ranks(cloud_manager, cloud_manager_v2):
 def test_upload_checkpoint_before_end_step(cloud_manager):
     ckpt_ipc_channel = get_default_ipc_channel(purpose=IpcCommPurpose.CKPT,
                                                local_rank=0)
-    ckpt_ack_ipc_channel = get_default_ipc_channel(purpose=IpcCommPurpose.CKPT_ACK,
-                                                   local_rank=0)
 
-    with ckpt_ipc_channel, ckpt_ack_ipc_channel:
+    with ckpt_ipc_channel:
         cloud_manager.start_step()
         cloud_manager.upload_checkpoint()
 

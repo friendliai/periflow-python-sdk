@@ -60,9 +60,6 @@ class TrainingManager:
         # Used only for local mode
         self._log_path: Optional[Path] = None
 
-        # checkpoint_ack
-        self._checkpoint_ack_thread: Optional[Thread] = None
-
         if not self._is_local:
             self._cloud_init()
             if teardown_at_exit:
@@ -271,15 +268,7 @@ class TrainingManager:
             "trigger_time": datetime.now().isoformat()
         }
 
-        if self._checkpoint_ack_thread is not None:
-            self._checkpoint_ack_thread.join()
-
         ipc_write(self._ipc_channels[IpcCommPurpose.CKPT], msg)
-
-        self._checkpoint_ack_thread = Thread(
-            target=ipc_status_read, args=(self._ipc_channels[IpcCommPurpose.CKPT_ACK],), daemon=True
-        )
-        self._checkpoint_ack_thread.start()
 
 
 periflow = TrainingManager()
