@@ -158,9 +158,6 @@ class TrainingManager:
                 else:
                     self._log_path = Path(f"./periflow_trainer_{int(time.time())}.log")
         else:
-            if not isinstance(total_train_steps, int):
-                raise PeriFlowError(f'total_train_steps should be an integer, got {type(total_train_steps)}')
-
             if total_train_steps is not None and total_train_steps <= self._cur_step:
                 raise PeriFlowError(
                     'total_train_steps should be greater than the current step, '
