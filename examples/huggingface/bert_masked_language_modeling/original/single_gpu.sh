@@ -1,0 +1,11 @@
+python run_mlm.py \
+    --config_name roberta-base \
+    --tokenizer_name roberta-base \
+    --dataset_name wikitext \
+    --dataset_config_name wikitext-2-raw-v1 \
+    --per_device_train_batch_size 8 \
+    --per_device_eval_batch_size 8 \
+    --do_train \
+    --do_eval \
+    --output_dir ./outputs \
+    --cache_dir ../cache
