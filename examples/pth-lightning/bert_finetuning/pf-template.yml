@@ -1,0 +1,35 @@
+# The name of experiment
+experiment: pl-finetuning
+
+# The name of job
+name: ft-run
+
+# The name of vm type
+vm: azure-16gb-v100-2g-eastus-spot
+
+# The number of GPU devices
+num_devices: 2
+
+# Configure your job!
+job_setting:
+  type: custom
+
+  # Docker config
+  docker:
+    # Docker image you want to use in the job
+    image: friendliai/periflow:sdk
+    # Bash shell command to run the job
+    command: >
+      cd /workspace/bert_finetuning && pip install -r requirements.txt && python main.py --cache-dir=/workspace/data/glue_sst --checkpoint-dir=/workspace/ckpt --num-gpus=2
+  # Path to mount your workspace volume
+  workspace:
+    mount_path: /workspace
+
+# Checkpoint config
+checkpoint:
+  # Path to output checkpoint
+  output_checkpoint_dir: /workspace/ckpt
+
+data:
+  name: glue_sst
+  mount_path: /workspace/data
