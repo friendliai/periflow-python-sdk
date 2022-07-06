@@ -210,19 +210,6 @@ def print_once(msg):
 @record
 def main():
 
-    # Device setup
-    if torch.cuda.is_available():
-        torch.cuda.set_device(int(os.environ["LOCAL_RANK"]))
-        device = torch.cuda.current_device()
-        backend = 'nccl'
-        os.environ["NCCL_DEBUG"] = "INFO"
-        print("### Using GPU")
-    else:
-        device = torch.device("cpu")
-        backend = 'gloo'
-        print("### Using CPU", flush=True)
-    torch_ddp.init_process_group(backend=backend)
-
     # See all possible arguments in src/transformers/training_args.py
     # or by passing the --help flag to this script.
     # We now keep distinct sets of args, for a cleaner separation of concerns.
