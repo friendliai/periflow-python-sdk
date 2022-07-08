@@ -7,8 +7,6 @@ https://huggingface.co/models?filter=text-generation
 """
 # You can also adapt this script on your own causal language modeling task. Pointers for this are left as comments.
 
-# TODO parallelism with Torch DDP
-
 import logging
 import math
 import os
@@ -275,36 +273,28 @@ def main():
     # In distributed training, the load_dataset function guarantee that only one local process can concurrently
     # download the dataset.
     if data_args.dataset_name is not None:
-        # Check if there are datasets saved in local storage.
-        datadir = data_args.dataset_saved_dir
-        datapath = os.path.join(datadir, data_args.dataset_config_name)
-        if datadir is not None and os.path.exists(datapath):    # saved datasets exist
-            raw_datasets = datasets.load_from_disk(datapath)
-            print_once("### Loading datasets from local storage")
-
-        else:
-            # Downloading and loading a dataset from the hub.
-            raw_datasets = load_dataset(
+        # Downloading and loading a dataset from the hub.
+        raw_datasets = load_dataset(
+            data_args.dataset_name,
+            data_args.dataset_config_name,
+            cache_dir=model_args.cache_dir,
+            use_auth_token=True if model_args.use_auth_token else None,
+        )
+        if "validation" not in raw_datasets.keys():
+            raw_datasets["validation"] = load_dataset(
                 data_args.dataset_name,
                 data_args.dataset_config_name,
+                split=f"train[:{data_args.validation_split_percentage}%]",
                 cache_dir=model_args.cache_dir,
                 use_auth_token=True if model_args.use_auth_token else None,
             )
-            if "validation" not in raw_datasets.keys():
-                raw_datasets["validation"] = load_dataset(
-                    data_args.dataset_name,
-                    data_args.dataset_config_name,
-                    split=f"train[:{data_args.validation_split_percentage}%]",
-                    cache_dir=model_args.cache_dir,
-                    use_auth_token=True if model_args.use_auth_token else None,
-                )
-                raw_datasets["train"] = load_dataset(
-                    data_args.dataset_name,
-                    data_args.dataset_config_name,
-                    split=f"train[{data_args.validation_split_percentage}%:]",
-                    cache_dir=model_args.cache_dir,
-                    use_auth_token=True if model_args.use_auth_token else None,
-                )
+            raw_datasets["train"] = load_dataset(
+                data_args.dataset_name,
+                data_args.dataset_config_name,
+                split=f"train[{data_args.validation_split_percentage}%:]",
+                cache_dir=model_args.cache_dir,
+                use_auth_token=True if model_args.use_auth_token else None,
+            )
     else:
         data_files = {}
         dataset_args = {}
@@ -551,13 +541,6 @@ def main():
         callbacks=[periflow_callback]
     )
 
-    print("#"*40)
-    dt = trainer.get_train_dataloader()
-    print(dt)
-    print(len(it := iter(dt)))
-    print(it.next())
-    print("#"*40)
-
     # Training
     if training_args.do_train:
         checkpoint = None
@@ -566,7 +549,6 @@ def main():
         elif last_checkpoint is not None:
             checkpoint = last_checkpoint
         train_result = trainer.train(resume_from_checkpoint=checkpoint)
-        trainer.save_model()  # Saves the tokenizer too for easy upload
 
         metrics = train_result.metrics
 
@@ -577,7 +559,6 @@ def main():
 
         trainer.log_metrics("train", metrics)
         trainer.save_metrics("train", metrics)
-        trainer.save_state()
 
     # Evaluation
     if training_args.do_eval:
@@ -594,21 +575,6 @@ def main():
         metrics["perplexity"] = perplexity
 
         trainer.log_metrics("eval", metrics)
-        trainer.save_metrics("eval", metrics)
-
-    kwargs = {"finetuned_from": model_args.model_name_or_path, "tasks": "text-generation"}
-    if data_args.dataset_name is not None:
-        kwargs["dataset_tags"] = data_args.dataset_name
-        if data_args.dataset_config_name is not None:
-            kwargs["dataset_args"] = data_args.dataset_config_name
-            kwargs["dataset"] = f"{data_args.dataset_name} {data_args.dataset_config_name}"
-        else:
-            kwargs["dataset"] = data_args.dataset_name
-
-    if training_args.push_to_hub:
-        trainer.push_to_hub(**kwargs)
-    else:
-        trainer.create_model_card(**kwargs)
 
 
 if __name__ == "__main__":

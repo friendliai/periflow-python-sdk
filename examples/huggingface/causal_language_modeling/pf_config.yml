@@ -5,7 +5,7 @@ experiment: huggingface-clm
 name: clm-job
 
 # The name of vm type
-vm: azure-16gb-v100-2g-eastus-spot
+vm: azure-80gb-a100-2g-eastus2
 
 # The number of GPU devices
 num_devices: 2
@@ -21,15 +21,16 @@ job_setting:
     # Bash shell command to run the job
     command: >
       cd /workspace/huggingface && pip install -r requirements.txt && torchrun --nnodes $NUM_NODES --node_rank $NODE_RANK --master_addr $MASTER_ADDR --master_port 6000 --nproc_per_node $NPROC_PER_NODE run_clm.py \
-        --model_name_or_path gpt2 \
+        --model_type gpt2 \
+        --tokenizer_name gpt2 \
         --dataset_name wikitext \
         --dataset_config_name wikitext-2-raw-v1 \
-        --dataset_saved_dir /workspace/data \
+        --cache_dir /workspace/data/wikitext \
         --per_device_train_batch_size 1 \
         --per_device_eval_batch_size 1 \
         --do_train \
         --do_eval \
-        --output_dir /workspace/huggingface/test-clm
+        --output_dir /workspace/ckpt
   # Path to mount your workspace volume
   workspace:
     mount_path: /workspace
@@ -37,13 +38,13 @@ job_setting:
 # Checkpoint config
 checkpoint:
   # # Input checkpoint
-  # input:
-  #   id:
-  #   mount_path: /workspace/ckpt
+  input:
+    id: 32018c7e-c428-48aa-9fb6-bcf8a6d69afd
+    mount_path: /workspace/ckpt
   # Path to output checkpoint
   output_checkpoint_dir: /workspace/ckpt
 
 # Dataset config
 data:
-  name: st-wikitext
+  name: wikitext
   mount_path: /workspace/data
