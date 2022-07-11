@@ -198,13 +198,6 @@ class DataTrainingArguments:
                 assert extension in ["csv", "json", "txt"], "`validation_file` should be a csv, a json or a txt file."
 
 
-def print_once(msg):
-    """ Prints a message only in the main process """
-    if torch_ddp.get_rank() != 0:
-        return
-    print(msg, flush=True)
-
-
 @record
 def main():
 
