@@ -51,7 +51,7 @@ def main(args: argparse.Namespace):
 
     if args.use_cpu:
         device = None
-        print_once("Using CPU", flush=True)
+        print_once("Using CPU")
     else:
         torch.cuda.set_device(int(os.environ["LOCAL_RANK"]))
         device = torch.cuda.current_device()
