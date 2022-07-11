@@ -1,0 +1,47 @@
+# The name of experiment
+experiment: mnist-test
+
+# The name of job
+name: mnist-job
+
+# The name of vm type
+vm: azure-16gb-v100-2g-eastus-spot
+
+# The number of GPU devices
+num_devices: 2
+
+# Configure your job!
+job_setting:
+  type: custom
+
+  # Docker config
+  docker:
+    # Docker image you want to use in the job
+    image: friendliai/periflow:sdk
+    # Bash shell command to run the job
+    command: >
+      cd /workspace/mnist && torchrun --nnodes $NUM_NODES --node_rank $NODE_RANK --master_addr $MASTER_ADDR --master_port 6000 --nproc_per_node $NPROC_PER_NODE main.py \
+        --epochs 3 \
+        --batch-size 50 \
+        --log-interval 200 \
+        --save-interval 100 \
+        --val-interval 400 \
+        --save /workspace/ckpt \
+        --load /workspace/ckpt
+  # Path to mount your workspace volume
+  workspace:
+    mount_path: /workspace
+
+# Checkpoint config
+checkpoint:
+  # Input checkpoint
+  input:
+    id: d46070d5-03d0-4c9d-b55c-4decdaf30616
+    mount_path: /workspace/ckpt
+  # Path to output checkpoint
+  output_checkpoint_dir: /workspace/ckpt
+
+# Configure dataset
+data:
+  name: st-mnist
+  mount_path: /workspace/mnist/data
