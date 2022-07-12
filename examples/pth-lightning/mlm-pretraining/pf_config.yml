@@ -1,0 +1,50 @@
+# The name of experiment
+experiment: lightning-mlm
+
+# The name of job
+name: mlm-albert
+
+# The name of vm type
+vm: azure-80gb-a100-2g-eastus2
+
+# The number of GPU devices
+num_devices: 2
+
+# Configure your job!
+job_setting:
+  type: custom
+
+  # Docker config
+  docker:
+    # Docker image you want to use in the job
+    image: friendliai/periflow:sdk
+    # Bash shell command to run the job
+    command: >
+      cd /workspace/mlm-pretraining && pip install -r requirements.txt && torchrun --nnodes $NUM_NODES --node_rank $NODE_RANK --master_addr $MASTER_ADDR --master_port 6000 --nproc_per_node $NPROC_PER_NODE main.py \
+        --dataset-name wikitext \
+        --dataset-config-name wikitext-2-raw-v1 \
+        --model-name albert-base-v2 \
+        --tokenizer-name albert-base-v2 \
+        --checkpoint-dir /workspace/ckpt \
+        --cache-dir /workspace/data/wikitext \
+        --num-epochs 5 \
+        --batch-size 32 \
+        --num-gpus 2 \
+        --log-interval 10
+  # Path to mount your workspace volume
+  workspace:
+    mount_path: /workspace
+
+# Checkpoint config
+checkpoint:
+  # Input checkpoint config: Specify checkpoint ID and add `--load-from-checkpoint` argument
+  # input:
+  #   id: 1e6f3bdf-437a-4c81-854d-5b15e0344abd
+  #   mount_path: /workspace/ckpt
+  # Path to output checkpoint
+  output_checkpoint_dir: /workspace/ckpt
+
+# Dataset config
+data:
+  name: wikitext
+  mount_path: /workspace/data

@@ -1,0 +1,4 @@
+pytorch-lightning
+lightning-transformers
+datasets
+transformers
