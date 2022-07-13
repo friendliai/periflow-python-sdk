@@ -2,7 +2,7 @@
 experiment: lightning-arlm
 
 # The name of job
-name: arlm-run-gpt-j
+name: arlm-run-gpt2
 
 # The name of vm type
 vm: azure-80gb-a100-2g-eastus2
@@ -20,15 +20,15 @@ job_setting:
     image: friendliai/periflow:sdk
     # Bash shell command to run the job
     command: >
-      cd /workspace/arlm_pretraining && pip install -r requirements.txt && torchrun --nnodes $NUM_NODES --node_rank $NODE_RANK --master_addr $MASTER_ADDR --master_port 6000 --nproc_per_node $NPROC_PER_NODE main.py \
+      cd /workspace/arlm-pretraining && pip install -r requirements.txt && torchrun --nnodes $NUM_NODES --node_rank $NODE_RANK --master_addr $MASTER_ADDR --master_port 6000 --nproc_per_node $NPROC_PER_NODE main.py \
         --dataset-name wikitext \
         --dataset-config-name wikitext-2-raw-v1 \
-        --model-name EleutherAI/gpt-j-6B \
-        --tokenizer-name EleutherAI/gpt-j-6B \
+        --model-name gpt2 \
+        --tokenizer-name gpt2 \
         --checkpoint-dir /workspace/ckpt \
         --cache-dir /workspace/data/wikitext \
         --num-epochs 5 \
-        --batch-size 1 \
+        --batch-size 16 \
         --num-gpus 2 \
         --log-interval 10
   # Path to mount your workspace volume
