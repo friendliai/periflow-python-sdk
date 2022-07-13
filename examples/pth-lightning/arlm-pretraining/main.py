@@ -16,8 +16,6 @@ from tqdm import tqdm
 
 @record
 def main(args: argparse.Namespace):
-    os.environ["TOKENIZERS_PARALLELISM"] = "false"
-    os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
     # Detect saved checkpoints
     if args.load_from_checkpoint:
