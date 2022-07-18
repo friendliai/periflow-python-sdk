@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-""" ImageNet Training Script
+"""
+https://github.com/rwightman/pytorch-image-models/blob/master/train.py
+
+ImageNet Training Script
 This is intended to be a lean and easily modifiable ImageNet training script that reproduces ImageNet
 training results with some of the latest networks and training techniques. It favours canonical PyTorch
 and standard Python style over trying to be able to 'do it all.' That said, it offers quite a few speed
@@ -657,7 +660,7 @@ def main():
             f.write(args_text)
 
     # initialize periflow
-    pf.init(total_train_steps=len(loader_train)*num_epochs)
+    pf.init(total_train_steps=len(loader_train) * num_epochs)
 
     # start training
     try:
@@ -705,7 +708,7 @@ def main():
                     else:
                         print("OUTPUT_DIR DOES NOT EXIST")                    
 
-            if saver is not None:   # True only in one process
+            if saver is not None:   # True only in the main process
                 # save proper checkpoint with eval metric
                 save_metric = eval_metrics[eval_metric]
                 best_metric, best_epoch = saver.save_checkpoint(epoch, metric=save_metric)

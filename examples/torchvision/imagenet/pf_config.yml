@@ -26,7 +26,6 @@ job_setting:
         --epochs 50 \
         --print-freq 10 \
         --world-size 2 \
-        --resume /workspace/ckpt \
         --output-dir /workspace/ckpt
   # Path to mount your workspace volume
   workspace:
@@ -35,9 +34,9 @@ job_setting:
 # Checkpoint config
 checkpoint:
   # Input checkpoint (use `--resume` to specify input checkpoint directory)
-  input:
-    id: 707f7fed-abf9-4729-aa33-f3a512ef0711
-    mount_path: /workspace/ckpt
+  # input:
+  #   id: 707f7fed-abf9-4729-aa33-f3a512ef0711
+  #   mount_path: /workspace/ckpt
   # Path to output checkpoint (use `--output-dir` to specify output checkpoint directory)
   output_checkpoint_dir: /workspace/ckpt
 

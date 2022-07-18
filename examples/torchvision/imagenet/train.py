@@ -1,3 +1,9 @@
+"""
+https://github.com/pytorch/vision/tree/main/references/classification
+
+Image classification implemented with torchvision
+"""
+
 import datetime
 import os
 import time
@@ -345,7 +351,7 @@ def main(args):
         return
 
     print("Start training")
-    pf.init(total_train_steps=len(data_loader)*args.epochs)
+    pf.init(total_train_steps=len(data_loader) * args.epochs)
     start_time = time.time()
 
     for epoch in range(args.start_epoch, args.epochs):

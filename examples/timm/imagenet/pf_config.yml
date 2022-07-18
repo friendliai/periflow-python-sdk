@@ -26,9 +26,7 @@ job_setting:
         --model efficientnet_b0 \
         --epochs 50 \
         --log-interval 50 \
-        --output /workspace/ckpt \
-        --initial-checkpoint /workspace/ckpt \
-        --resume
+        --output /workspace/ckpt
   # Path to mount your workspace volume
   workspace:
     mount_path: /workspace
@@ -36,11 +34,11 @@ job_setting:
 # Checkpoint config
 checkpoint:
   # Input checkpoint
-  # (use --initial-checkpoint argument to specify checkpoint directory for model initialization,
+  # (Add `--initial-checkpoint` to specify checkpoint directory for model initialization,
   # and --resume to resume entire training states.)
-  input:
-    id: ab48fcbf-cc1b-4493-8323-e9c6ebb8ee76
-    mount_path: /workspace/ckpt
+  # input:
+  #   id: ab48fcbf-cc1b-4493-8323-e9c6ebb8ee76
+  #   mount_path: /workspace/ckpt
   # Path to output checkpoint
   output_checkpoint_dir: /workspace/ckpt
 
