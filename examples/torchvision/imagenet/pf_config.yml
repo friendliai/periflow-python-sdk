@@ -1,0 +1,46 @@
+# The name of experiment
+experiment: imgnet
+
+# The name of job
+name: tv-resnet
+
+# The name of vm type
+vm: azure-80gb-a100-2g-eastus2
+
+# The number of GPU devices
+num_devices: 2
+
+# Configure your job!
+job_setting:
+  type: custom
+
+  # Docker config
+  docker:
+    # Docker image you want to use in the job
+    image: friendliai/periflow:sdk
+    # Bash shell command to run the job
+    command: >
+      cd /workspace/imagenet && torchrun --nnodes $NUM_NODES --node_rank $NODE_RANK --master_addr $MASTER_ADDR --master_port 6000 --nproc_per_node $NPROC_PER_NODE train.py \
+        --data-path /workspace/data/reduced-tiny-imagenet \
+        --model resnet18 \
+        --epochs 50 \
+        --print-freq 10 \
+        --world-size 2 \
+        --output-dir /workspace/ckpt
+  # Path to mount your workspace volume
+  workspace:
+    mount_path: /workspace
+
+# Checkpoint config
+checkpoint:
+  # # Input checkpoint (use `--resume` to specify input checkpoint directory)
+  # input:
+  #   id: <input-checkpoint-id>
+  #   mount_path: /workspace/ckpt
+  # Path to output checkpoint (use `--output-dir` to specify output checkpoint directory)
+  output_checkpoint_dir: /workspace/ckpt
+
+# Dataset config
+data:
+  name: reduced-tiny-imagenet
+  mount_path: /workspace/data
