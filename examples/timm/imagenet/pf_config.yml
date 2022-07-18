@@ -33,11 +33,11 @@ job_setting:
 
 # Checkpoint config
 checkpoint:
-  # Input checkpoint
-  # (Add `--initial-checkpoint` to specify checkpoint directory for model initialization,
-  # and --resume to resume entire training states.)
+  # # Input checkpoint
+  # # (Add `--initial-checkpoint` to specify checkpoint directory for model initialization,
+  # # and --resume to resume entire training states.)
   # input:
-  #   id: ab48fcbf-cc1b-4493-8323-e9c6ebb8ee76
+  #   id: <input-checkpoint-id>
   #   mount_path: /workspace/ckpt
   # Path to output checkpoint
   output_checkpoint_dir: /workspace/ckpt

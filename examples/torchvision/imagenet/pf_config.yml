@@ -33,9 +33,9 @@ job_setting:
 
 # Checkpoint config
 checkpoint:
-  # Input checkpoint (use `--resume` to specify input checkpoint directory)
+  # # Input checkpoint (use `--resume` to specify input checkpoint directory)
   # input:
-  #   id: 707f7fed-abf9-4729-aa33-f3a512ef0711
+  #   id: <input-checkpoint-id>
   #   mount_path: /workspace/ckpt
   # Path to output checkpoint (use `--output-dir` to specify output checkpoint directory)
   output_checkpoint_dir: /workspace/ckpt
