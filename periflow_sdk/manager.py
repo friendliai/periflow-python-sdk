@@ -178,7 +178,7 @@ class TrainingManager:
         """
         if self._is_step_started:
             raise PeriFlowError(
-                'Step already started. Maybe `end_step` is not called for the previous step?)')
+                'Step already started. Maybe `end_step` is not called for the previous step?')
 
         self._cur_step += 1
         self._step_start_time = time.monotonic()
