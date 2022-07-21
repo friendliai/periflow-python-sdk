@@ -1,0 +1,42 @@
+# The name of experiment
+experiment: detection
+
+# The name of job
+name: mmdet-mask
+
+# The name of vm type
+vm: azure-80gb-a100-2g-eastus2
+
+# The number of GPU devices
+num_devices: 2
+
+# Configure your job!
+job_setting:
+  type: custom
+
+  # Docker config
+  docker:
+    # Docker image you want to use in the job
+    image: friendliai/periflow:sdk
+    # Bash shell command to run the job
+    command: >
+      cd /workspace/mmdetection && chmod u+x script.sh && ./script.sh
+
+  # Path to mount your workspace volume
+  workspace:
+    mount_path: /workspace
+
+# Checkpoint config
+checkpoint:
+  # # Input checkpoint (Add `--auto-resume` to resume training state from checkpoint)
+  # input:
+  #   id: <input-checkpoint-id>
+  #   mount_path: /workspace/ckpt
+  
+  # Path to output checkpoint
+  output_checkpoint_dir: /workspace/ckpt
+
+# Dataset config
+data:
+  name: balloon_with_ckpt
+  mount_path: /workspace/data

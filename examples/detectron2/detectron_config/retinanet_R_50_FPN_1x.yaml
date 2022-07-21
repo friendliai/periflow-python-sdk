@@ -1,0 +1,9 @@
+_BASE_: "./base/Base-RetinaNet.yaml"
+MODEL:
+  RESNETS:
+    DEPTH: 50
+SOLVER:
+  MAX_ITER: 300
+  BASE_LR: 0.00001
+DATALOADER:
+  NUM_WORKERS: 1
