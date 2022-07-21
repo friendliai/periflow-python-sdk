@@ -1,4 +1,8 @@
 # Copyright (c) OpenMMLab. All rights reserved.
+"""
+https://github.com/open-mmlab/mmdetection/blob/master/tools/train.py
+"""
+
 import argparse
 import copy
 import os

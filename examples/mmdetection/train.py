@@ -1,6 +1,6 @@
 # Copyright (c) OpenMMLab. All rights reserved.
 """
-https://github.com/open-mmlab/mmdetection/blob/master/tools/train.py
+Refered to: https://github.com/open-mmlab/mmdetection/blob/master/tools/train.py
 """
 
 import argparse
@@ -33,7 +33,6 @@ from mmdet.utils import (
     replace_cfg_vals, setup_multi_processes,
     update_data_root,
     build_ddp, build_dp, compat_cfg,
-    find_latest_checkpoint,
 )
 from mmdet.core import DistEvalHook, EvalHook, build_optimizer
 from mmdet.datasets import (
@@ -48,6 +47,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Train a detector')
     parser.add_argument('--config', help='train config file path')
     parser.add_argument('--work-dir', help='the dir to save logs and models')
+    parser.add_argument('--checkpoint-dir', help='the dir to save checkpoints')
     parser.add_argument(
         '--resume-from', help='the checkpoint file to resume from')
     parser.add_argument(
@@ -140,8 +140,7 @@ class PeriflowTrainingHook(Hook):
 class PeriflowCheckpointHook(CheckpointHook):
     def after_train_epoch(self, runner):
         super().after_train_epoch(runner)
-        # pf.upload_checkpoint()
-        # runner.logger.info("#"*10 + " pf.upload_checkpoint() called")
+        pf.upload_checkpoint()
 
 
 def train_detector(model,
@@ -220,14 +219,19 @@ def train_detector(model,
 
     # register hooks
     pf_training_hook = PeriflowTrainingHook()
-    pf_checkpoint_hook = PeriflowCheckpointHook(interval=1, out_dir=args.work_dir)
+    pf_checkpoint_hook = PeriflowCheckpointHook(
+        interval=1,
+        out_dir=args.checkpoint_dir,
+        create_symlink=False,
+    )
     runner.register_training_hooks(
         cfg.lr_config,
         optimizer_config,
         pf_checkpoint_hook,
         cfg.log_config,
         cfg.get('momentum_config', None),
-        custom_hooks_config=pf_training_hook)
+        custom_hooks_config=pf_training_hook
+    )
 
     if distributed:
         if isinstance(runner, EpochBasedRunner):
@@ -263,11 +267,13 @@ def train_detector(model,
         runner.register_hook(
             eval_hook(val_dataloader, **eval_cfg), priority='LOW')
 
-    resume_from = None
-    if cfg.resume_from is None and cfg.get('auto_resume'):
-        resume_from = find_latest_checkpoint(cfg.work_dir)
-    if resume_from is not None:
-        cfg.resume_from = resume_from
+    if args.auto_resume:
+        if not os.listdir(args.checkpoint_dir):
+            raise FileNotFoundError("Specified checkpoint directory is empty; cannot resume states")
+        ckpt_files = os.listdir(ckpt_dir := osp.join(args.checkpoint_dir, "logs"))
+        if not ckpt_files:
+            raise FileNotFoundError("Specified checkpoint directory is empty; cannot resume states")
+        cfg.resume_from = osp.join(ckpt_dir, ckpt_files[0])
 
     if cfg.resume_from:
         runner.resume(cfg.resume_from)

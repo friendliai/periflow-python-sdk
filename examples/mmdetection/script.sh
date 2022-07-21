@@ -20,7 +20,7 @@ export FILENAME="train.py"
 echo
 echo "##### RUNNING TRAINING PROGRAM ($FILENAME)"
 # Add `--auto-resume` to resume training state from checkpoint
-#torchrun --nnodes $NUM_NODES --node_rank $NODE_RANK --master_addr $MASTER_ADDR --master_port 6000 --nproc_per_node $NPROC_PER_NODE $FILENAME \
-python $FILENAME \
+torchrun --nnodes $NUM_NODES --node_rank $NODE_RANK --master_addr $MASTER_ADDR --master_port 6000 --nproc_per_node $NPROC_PER_NODE $FILENAME \
     --config configs/balloon/mask_rcnn_r50_caffe_fpn_mstrain-poly_1x_balloon.py \
-    --work-dir /workspace/ckpt
+    --work-dir /workspace/logs \
+    --checkpoint-dir /workspace/ckpt
